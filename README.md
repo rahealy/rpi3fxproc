@@ -11,4 +11,4 @@ make clean examples
 
 Serial output from ultra2 example:
 
-<img src="serial_output.png" alt="Serial output from the initialization sequence." height="595" width="529"/>
+<img src="serial_output.png" alt="Serial output from the initialization sequence." height="529" width="595"/>
