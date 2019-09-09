@@ -31,15 +31,10 @@ pub mod i2c;
 pub mod i2s;
 pub mod pwm;
 pub mod timer;
-pub mod peripherals;
+pub mod debug;
 
 pub const MMIO_BASE: u32 = 0x3F00_0000;         //Peripheral access is derived from this base memory offset.
 pub const TIMER_MIN_RESOLUTION_MSECS: u32 = 10; //Minimum number of ticks for reliable timer operation.
-
-///
-///Use global PERIPHERALS structure to access on-chip rpi peripherals.
-///
-pub const PERIPHERALS: peripherals::Peripherals = peripherals::Peripherals::new();
 
 #[cfg(test)]
 mod tests {

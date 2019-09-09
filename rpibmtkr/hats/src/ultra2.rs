@@ -31,7 +31,7 @@
  */
 
 use peripherals::MMIO_BASE;
-use peripherals::{PERIPHERALS, i2c, timer};
+use peripherals::{debug, i2c, timer};
 use drivers::cs4265;
 use register::register_bitfields;
 use register::mmio::ReadWrite;
@@ -108,13 +108,16 @@ pub const GPCLR0: *const ReadWrite<u32, GPCLR0::Register> =
  * Ultra2
  *********************************************************************/
 
-pub struct Ultra2 {
-    pub cs4265: cs4265::CS4265
+pub struct Ultra2<SI2C, STIMER> where 
+    SI2C: i2c::I2C,
+    STIMER: timer::Timer
+{
+    pub cs4265: cs4265::CS4265<SI2C>,
+    pub timer: STIMER
 }
 
 pub enum ERROR {
     I2C(i2c::ERROR),
-    Timer(timer::ERROR),
     CS4265(cs4265::ERROR)
 }
  
@@ -122,35 +125,42 @@ impl ERROR {
     pub fn msg (&self) -> &'static str {
         match self {
             ERROR::I2C(err) => err.msg(),
-            ERROR::Timer(err) => err.msg(),
             ERROR::CS4265(err) => err.msg()
         }
     }
 }
 
-impl Ultra2 {
-    pub fn new() -> Ultra2 {
-        Ultra2 {
-            cs4265: cs4265::CS4265::new()
+impl <II2C, ITIMER> Default for Ultra2<II2C, ITIMER> where 
+    II2C: i2c::I2C + Default,
+    ITIMER: timer::Timer + Default
+{
+    fn default() -> Ultra2<II2C, ITIMER> {
+        Ultra2::<II2C, ITIMER> {
+            cs4265: cs4265::CS4265::<II2C>::default(),
+            timer: <ITIMER>::default()
         }
     }
+}
+
+impl <II2C, ITIMER> Ultra2<II2C, ITIMER> where 
+    II2C: i2c::I2C + Default,
+    ITIMER: timer::Timer + Default
+{
 
 ///
 /// Bring ultra2 out of reset. Poll for condition of CS4265 SDOUT pin 
 /// and save i2c address for use in further accesses.
 ///
     pub fn init(&mut self) -> Result<(), ERROR> {
-        PERIPHERALS.uart.puts("ultra2.init(): Releasing reset. Waiting two seconds for settle.\r\n");
+        debug::out("ultra2.init(): Releasing reset. Waiting two seconds for settle.\r\n");
         unsafe {
             (*GPFSEL0).modify(GPFSEL0::FSEL5::OUTPUT);
             (*GPSET0).modify(GPSET0::PSET5::SET);
         }
 
-        if let Err(err) = PERIPHERALS.timer.one_shot(1, 2_000_000) {
-            return Err(ERROR::Timer(err));
-        }
+        self.timer.one_shot(2_000_000);
 
-        PERIPHERALS.uart.puts("ultra2.init(): Initializing cs4265.\r\n");
+        debug::out("ultra2.init(): Initializing cs4265.\r\n");
         if let Err(err) = self.cs4265.init() {
             match err {
                 cs4265::ERROR::I2C(e) => {

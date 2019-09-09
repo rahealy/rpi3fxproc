@@ -92,6 +92,12 @@ pub struct Mbox {
     pub buffer: [u32; 36],
 }
 
+impl Default for Mbox {
+    fn default() -> Mbox {
+        Mbox { buffer: [0; 36] }
+    }
+}
+
 /// Deref to RegisterBlock
 ///
 /// Allows writing
@@ -111,8 +117,8 @@ impl ops::Deref for Mbox {
 }
 
 impl Mbox {
-    pub const fn new() -> Mbox {
-        Mbox { buffer: [0; 36] }
+    pub fn new() -> Mbox {
+        Mbox::default()
     }
 
     /// Returns a pointer to the register block

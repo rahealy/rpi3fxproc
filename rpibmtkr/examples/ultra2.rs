@@ -29,9 +29,8 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use peripherals::PERIPHERALS;
-//use drivers::cs4265;
-use hats::ultra2;
+use peripherals::{debug, timer, i2c};
+use hats::ultra2::Ultra2;
 
 mod startup; //Pull in startup code.
 
@@ -47,19 +46,19 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 
 
 ///
-/// Main loop exercises timers.
+/// Main loop.
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
-    let mut ultra2 = ultra2::Ultra2::new();
+    debug::init();
 
-    PERIPHERALS.init();
-    PERIPHERALS.uart.puts("Ultra2 Example.\r\n");
+    let mut u2 = Ultra2::<i2c::I2C1, 
+                          timer::Timer1>::default();
 
-    if let Err(err) = ultra2.init() {
-        PERIPHERALS.uart.puts("main(): Error ultra2.init() failed - ");        
-        PERIPHERALS.uart.puts(err.msg());
-        PERIPHERALS.uart.puts("\r\n");
+    if let Err(err) = u2.init() {
+        debug::out("main(): Error ultra2.init() failed - ");     
+        debug::out(err.msg());
+        debug::out("\r\n");
         panic!();
     }
 

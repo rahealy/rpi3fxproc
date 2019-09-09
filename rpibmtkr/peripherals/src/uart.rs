@@ -162,7 +162,9 @@ impl Uart {
     }
 
     ///Set baud rate and characteristics (115200 8N1) and map to GPIO
-    pub fn init(&self, mbox: &mut mbox::Mbox) -> Result<()> {
+    pub fn init(&self) -> Result<()> {
+        let mut mbox = mbox::Mbox::default();
+
         // turn off UART0
         self.CR.set(0);
 

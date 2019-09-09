@@ -60,10 +60,41 @@ use super::MMIO_BASE;
 use register::register_bitfields;
 use register::mmio::ReadWrite;
 use core::ops;
-use super::PERIPHERALS;
+use crate::debug;
+
 
 /**********************************************************************
- * GPIO
+ * ERROR
+ *********************************************************************/
+
+pub enum ERROR {
+///BSC is active.
+    ACTIVE,
+///BSC is not active
+    INACTIVE,
+///Slave did not acknowledge a transfer.
+    NOACK,      
+///Slave did not reply in time.
+    TIMEOUT,
+///I2C transaction is unexpectedly done.
+    DONE
+}
+
+impl ERROR {
+    pub fn msg (&self) -> &'static str {
+        match self {
+            ERROR::ACTIVE   => "BSC is unexpectedly active.",
+            ERROR::INACTIVE => "BSC is unexpectedly inactive.",
+            ERROR::NOACK    => "Slave did not acknowledge a transfer.",
+            ERROR::TIMEOUT  => "Slave did not reply in time.",
+            ERROR::DONE     => "Transaction is unexpectedly done."
+        }
+    }
+}
+
+
+/**********************************************************************
+ * GPFSEL
  *********************************************************************/
 
 register_bitfields! {
@@ -85,17 +116,56 @@ register_bitfields! {
     ]
 }
 
+
 ///
 ///GPFSEL0 alternative function select register - 0x7E200000
 ///
 const GPFSEL0_OFFSET: u32 = 0x0020_0000;
 const GPFSEL0_BASE:   u32 = MMIO_BASE + GPFSEL0_OFFSET;
 
+
 ///
-///Function select register for the GPIO pins used by the RPi3 I2C1 peripheral.
+///Register block representing all the GPFSEL registers.
 ///
-pub const GPFSEL0: *const ReadWrite<u32, GPFSEL0::Register> =
-    GPFSEL0_BASE as *const ReadWrite<u32, GPFSEL0::Register>;
+#[allow(non_snake_case)]
+#[repr(C)]
+struct RegisterBlockGPFSEL {
+    GPFSEL0: ReadWrite<u32, GPFSEL0::Register>
+}
+
+///
+///Implements accessors to the GPFSEL registers. 
+///
+struct GPFSEL;
+
+impl ops::Deref for GPFSEL {
+    type Target = RegisterBlockGPFSEL;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*Self::ptr() }
+    }
+}
+
+impl GPFSEL {
+    fn ptr() -> *const RegisterBlockGPFSEL {
+        GPFSEL0_BASE as *const _
+    }
+
+    const fn new() -> GPFSEL {
+        GPFSEL
+    }
+
+///
+///Select alternate GPIO pin functions for the I2C1 peripheral.
+///
+    fn fsel_i2c1(&self) {
+        self.GPFSEL0.modify(GPFSEL0::FSEL2::INPUT + 
+                            GPFSEL0::FSEL3::INPUT);
+
+        self.GPFSEL0.modify(GPFSEL0::FSEL2::SDA1 + 
+                            GPFSEL0::FSEL3::SCL1);
+    }
+}
 
 
 /**********************************************************************
@@ -203,12 +273,13 @@ register_bitfields! {
 const BSC1_OFFSET:  u32 = 0x0080_4000;
 const BSC1_BASE:    u32 = MMIO_BASE + BSC1_OFFSET; 
 
+
 ///
-/// I2C peripheral registers
+///Register block representing all the BSC registers.
 ///
 #[allow(non_snake_case)]
 #[repr(C)]
-pub struct RegisterBlock {
+pub struct RegisterBlockBSC {
 ///Control register
     C:      ReadWrite<u32, C::Register>,
     
@@ -235,61 +306,45 @@ pub struct RegisterBlock {
 }
 
 
-pub enum ERROR {
-///BSC is active.
-    ACTIVE,
-///BSC is not active
-    INACTIVE,
-///Slave did not acknowledge a transfer.
-    NOACK,      
-///Slave did not reply in time.
-    TIMEOUT,
-///I2C transaction is unexpectedly done.
-    DONE
+/**********************************************************************
+ * I2C
+ *********************************************************************/
+
+pub trait I2C {
+    fn ptr() -> *const RegisterBlockBSC;
+    fn init(&self);
+    fn reset(&self);
+    fn poll_error(&self) -> Result<(), ERROR>;
+    fn poll_done(&self) -> Result<(), ERROR>;
+    fn write(&self, addr: u8, reg: u8, data: &[u8]) -> Result<(), ERROR>;
+    fn read(&self, addr: u8, reg: u8, data: &mut [u8]) -> Result<(), ERROR>;
 }
 
-impl ERROR {
-    pub fn msg (&self) -> &'static str {
-        match self {
-            ERROR::ACTIVE   => "BSC is unexpectedly active.",
-            ERROR::INACTIVE => "BSC is unexpectedly inactive.",
-            ERROR::NOACK    => "Slave did not acknowledge a transfer.",
-            ERROR::TIMEOUT  => "Slave did not reply in time.",
-            ERROR::DONE     => "Transaction is unexpectedly done."
-        }
-    }
-}
+/**********************************************************************
+ * I2C1
+ *********************************************************************/
 
 ///
 /// Second I2C (I2C1) peripheral registers
 ///
+#[derive(Default)]
 pub struct I2C1;
 
 impl ops::Deref for I2C1 {
-    type Target = RegisterBlock;
+    type Target = RegisterBlockBSC;
 
     fn deref(&self) -> &Self::Target {
         unsafe { &*Self::ptr() }
     }
 }
 
-impl I2C1 {
-    fn ptr() -> *const RegisterBlock {
+impl I2C for I2C1 {
+    fn ptr() -> *const RegisterBlockBSC {
         BSC1_BASE as *const _
     }
 
-    pub const fn new() -> I2C1 {
-        I2C1
-    }
-
-    pub fn init(&self) {
-        unsafe {
-            (*GPFSEL0).modify(GPFSEL0::FSEL2::INPUT + 
-                              GPFSEL0::FSEL3::INPUT);
-
-            (*GPFSEL0).modify(GPFSEL0::FSEL2::SDA1 + 
-                              GPFSEL0::FSEL3::SCL1);
-        }
+    fn init(&self) {
+        GPFSEL::new().fsel_i2c1(); //Select the GPIO pins for I2C1.
 
         self.DIV.modify(DIV::CDIV.val(0xFFFF));   //Value of 0 defaults to divsor of 32768.
         self.CLKT.modify(CLKT::TOUT.val(0));      //Turn off clock stretching since it's buggy.
@@ -307,7 +362,7 @@ impl I2C1 {
     }
 
 ///Reset i2c regardless of transfer active status.
-    pub fn reset(&self) -> () {
+    fn reset(&self) {
 //Reset status register.
         self.S.modify (
             S::CLKT::SET +
@@ -319,13 +374,8 @@ impl I2C1 {
     }
 
 ///Determine if an active transfer has an error condition.
-    pub fn poll_error(&self) -> Result<(), ERROR> {
+    fn poll_error(&self) -> Result<(), ERROR> {
         let s = self.S.extract();
-
-//Make sure transfer is active.
-//         if !s.is_set(S::TA) {
-//             return Err(ERROR::INACTIVE);
-//         }
 //Poll for error.
         if s.is_set(S::ERR) {
             return Err(ERROR::NOACK);
@@ -337,11 +387,9 @@ impl I2C1 {
         return Ok(());
     }
 
-
-    pub fn poll_done(&self) -> Result<(), ERROR> {
+    fn poll_done(&self) -> Result<(), ERROR> {
         loop {
             let s = self.S.extract();
-
 //Poll for error.
             if s.is_set(S::ERR) {
                 return Err(ERROR::NOACK);
@@ -358,7 +406,7 @@ impl I2C1 {
         return Ok(());
     }
 
-    pub fn write(&self, addr: u8, reg: u8, data: &[u8]) -> Result<(), ERROR> {
+    fn write(&self, addr: u8, reg: u8, data: &[u8]) -> Result<(), ERROR> {
         let len: usize = data.len();
         let mut i: usize = 0;
 
@@ -368,29 +416,29 @@ impl I2C1 {
         }
     
 //Initialize i2c1
-        PERIPHERALS.uart.puts("i2c.write(): Init.\r\n");
+        debug::out("i2c.write(): Init.\r\n");
         self.DLEN.set((len + 1) as u32); //Set data length including register address.
         self.A.set(addr as u32);         //Set the slave address.
         self.C.modify(C::READ::CLEAR);   //Clear READ bit.
 
         if let Err(err) = self.poll_error() {
-            PERIPHERALS.uart.puts("i2c.write(): poll_error().\r\n");
+            debug::out("i2c.write(): poll_error().\r\n");
             return Err(err);
         }
 
 //Write slave register address.
-        PERIPHERALS.uart.puts("i2c.write(): Write regaddr.\r\n");
+        debug::out("i2c.write(): Write regaddr.\r\n");
         self.FIFO.set(reg as u32);
 
 //Start transfer.
-        PERIPHERALS.uart.puts("i2c.write(): Start xfer.\r\n");
+        debug::out("i2c.write(): Start xfer.\r\n");
         self.C.modify(C::START::SET);
-        PERIPHERALS.uart.puts("i2c.write(): Xfer started.\r\n");
+        debug::out("i2c.write(): Xfer started.\r\n");
 
 //Keep the FIFO filled until error or all bytes written.
         while i < len {
             if let Err(err) = self.poll_error() { //Error condition.
-                PERIPHERALS.uart.puts("i2c.write(): Error.\r\n");
+                debug::out("i2c.write(): Error.\r\n");
                 return Err(err);
             }
 
@@ -404,11 +452,11 @@ impl I2C1 {
         }
 
 //Wait for all bytes to be sent to slave.
-        PERIPHERALS.uart.puts("i2c.write(): Xfer finished. Poll until done.\r\n");
+        debug::out("i2c.write(): Xfer finished. Poll until done.\r\n");
         return self.poll_done();
     }
 
-    pub fn read(&self, addr: u8, reg: u8, data: &mut [u8]) -> Result<(), ERROR> {
+    fn read(&self, addr: u8, reg: u8, data: &mut [u8]) -> Result<(), ERROR> {
         let len: usize = data.len();
         let mut i: usize = 0;
 
@@ -417,24 +465,24 @@ impl I2C1 {
         }
 
 //Write the slave device register address to read from.
-        PERIPHERALS.uart.puts("i2c.read(): Write register.\r\n");
+        debug::out("i2c.read(): Write register.\r\n");
         if let Err(err) = self.write(addr, reg, &[]) {
             return Err(err);
         }
-        PERIPHERALS.uart.puts("i2c.read(): Register written.\r\n");
+        debug::out("i2c.read(): Register written.\r\n");
 
 
 //Initialize and read.
-        PERIPHERALS.uart.puts("i2c.read(): Reset and initialize.\r\n");
+        debug::out("i2c.read(): Reset and initialize.\r\n");
         self.reset();
         self.DLEN.set(len as u32);       //Set data length including register address.
         self.A.set(addr as u32);         //Set the slave address.
         self.C.modify(C::READ::SET);     //Set BSC to read operation.
 
-        PERIPHERALS.uart.puts("i2c.read(): Start xfer.\r\n");
+        debug::out("i2c.read(): Start xfer.\r\n");
         self.C.modify(C::CLEAR::SET +    //Clear FIFO.
                       C::START::SET);    //Start transfer.
-        PERIPHERALS.uart.puts("i2c.read(): Xfer started.\r\n");
+        debug::out("i2c.read(): Xfer started.\r\n");
 
 //Keep the FIFO from overflowing until error or all bytes read.
         while i < len {
@@ -447,8 +495,13 @@ impl I2C1 {
                 i += 1;
             }
         }
-        PERIPHERALS.uart.puts("i2c.read(): Xfer finished. Poll until done.\r\n");
+        debug::out("i2c.read(): Xfer finished. Poll until done.\r\n");
         return self.poll_done();
     }
 }
 
+impl I2C1 {
+    pub const fn new() -> I2C1 {
+        I2C1
+    }
+}

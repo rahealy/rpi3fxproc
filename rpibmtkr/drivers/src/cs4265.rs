@@ -31,7 +31,7 @@
 
 use register::register_bitfields;
 use register::mmio::ReadWrite;
-use peripherals::{PERIPHERALS, i2c};
+use peripherals::{debug, i2c};
 
 /**********************************************************************
  * ERROR
@@ -408,7 +408,9 @@ pub struct RegisterBlock {
 ///
 #[allow(non_snake_case)]
 #[derive(Default)]
-pub struct CS4265 {
+pub struct CS4265<S> {
+    i2c: S,
+
 ///I2C address of the CS4265 0x00.
     pub CHIPADDR: u8,
 
@@ -467,8 +469,10 @@ pub struct CS4265 {
 //     XMITCTL2: u8
 }
 
-impl CS4265 {
-    pub fn new() -> CS4265 {
+impl <I> CS4265<I> where
+    I: i2c::I2C + Default
+{
+    pub fn new() -> CS4265<I> {
         CS4265 { ..Default::default() }
     }
 
@@ -478,28 +482,28 @@ impl CS4265 {
     pub fn poll_chip_id(&mut self, addr: u8) -> Result<(), ERROR> {
         let mut chipid: [u8;1] = [0];
 
-        match PERIPHERALS.i2c1.read(addr,
-                                    RegisterAddress::CHIPID as u8,
-                                    &mut chipid)
+        match self.i2c.read(addr,
+                            RegisterAddress::CHIPID as u8,
+                            &mut chipid)
         {
             Ok(())   => {
                 self.CHIPID = chipid[0];
     
                 if ((self.CHIPID & 0b11110000) >> 4) == 0b1101 {
-                    PERIPHERALS.uart.puts("cs4265.poll_chip_id(): CS4265 Part ID is 0b1101.\r\n");
+                    debug::out("cs4265.poll_chip_id(): CS4265 Part ID is 0b1101.\r\n");
 
                     match self.CHIPID & 0b00001111 {
                         0b0001 => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Part Revision A.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Part Revision A.\r\n");
                         },
                         0b0010 => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Part Revision B or C0.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Part Revision B or C0.\r\n");
                         },
                         0b0011 => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Part Revision C1.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Part Revision C1.\r\n");
                         },
                         _ => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Unknown Part Revision.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Unknown Part Revision.\r\n");
                         }
                     }
                     Ok(())
@@ -522,29 +526,29 @@ impl CS4265 {
 /// Poll for cs4265 address and chipid.
 ///
     pub fn init(&mut self) -> Result<(), ERROR> {
-        PERIPHERALS.uart.puts("cs4265.init(): Trying LOW address...\r\n");
+        debug::out("cs4265.init(): Trying LOW address...\r\n");
         match self.poll_chip_id(Address::LOW as u8) {
             Ok(_) => {
-                PERIPHERALS.uart.puts("cs4265.init(): cs4265 found at LOW address.");
+                debug::out("cs4265.init(): cs4265 found at LOW address.");
                 self.CHIPADDR = Address::LOW as u8;
                 return Ok(());
             }
 
             Err(_) => {
-                PERIPHERALS.uart.puts("cs4265.init(): Poll for LOW address failed.\r\n");
+                debug::out("cs4265.init(): Poll for LOW address failed.\r\n");
             }
         }
 
-        PERIPHERALS.uart.puts("cs4265.init(): Trying HIGH address...\r\n");
+        debug::out("cs4265.init(): Trying HIGH address...\r\n");
         match self.poll_chip_id(Address::HIGH as u8) {
             Ok(_) => {
-                PERIPHERALS.uart.puts("cs4265.init(): cs4265 found at HIGH address.\r\n");
+                debug::out("cs4265.init(): cs4265 found at HIGH address.\r\n");
                 self.CHIPADDR = Address::HIGH as u8;
                 return Ok(());
             }
 
             Err(err) => {
-                PERIPHERALS.uart.puts("cs4265.init(): Poll for HIGH address failed.\r\n");
+                debug::out("cs4265.init(): Poll for HIGH address failed.\r\n");
                 return Err(err);
             }
         }
