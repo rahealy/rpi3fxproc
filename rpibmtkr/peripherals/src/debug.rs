@@ -25,19 +25,16 @@
 use crate::uart;
 
 pub struct Dbg {
-    uart: uart::Uart
+    uart: uart::Uart0
 }
 
 pub fn init() {
-    let uart = uart::Uart;
-    if let Ok(_) = uart.init() {
-        unsafe {
-            DBG = Some(
-                Dbg {
-                    uart: uart
-                }
-            );
-        }
+    unsafe {
+        DBG = Some(
+            Dbg {
+                uart: uart::Uart0
+            }
+        );
     }
 }
 
