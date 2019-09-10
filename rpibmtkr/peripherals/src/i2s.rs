@@ -117,6 +117,7 @@ pub struct RegisterBlockGPFSEL {
 ///
 /// GPFSEL peripheral registers
 ///
+#[derive(Default)]
 pub struct GPFSEL;
 
 impl ops::Deref for GPFSEL {
@@ -841,7 +842,7 @@ pub struct I2S;
 
 impl I2S {
     pub fn init(&self, params: &PCMParams) {
-        GPFSEL::new().fsel_i2s();
+        GPFSEL::default().fsel_i2s();
         PCM::default().init(params);
     }
 }
