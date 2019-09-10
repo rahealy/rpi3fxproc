@@ -670,13 +670,13 @@ impl Channel {
 
     pub fn width(&mut self, val: u32) -> &mut Self {
         let mut new = self;
-        if val <= 8 {
-            new.wid = 0x0;
-        } else if val <= 16 {
+        if val <= 8 {         //8 bit.
+            new.wid = 0x0; 
+        } else if val <= 16 { //16 bit.
             new.wid = 0x8;
-        } else if val <= 24 {
+        } else if val <= 24 { //24 bit.
             new.wid = 0xF;
-        } else if val <= 32 {
+        } else if val <= 32 { //32 bit.
             new.wex = 1;
             new.wid = 8;
         }
@@ -692,14 +692,14 @@ impl Channel {
 
 #[derive(Default)]
 pub struct Channels {
-    ch1: Channel, 
-    ch2: Channel
+    pub ch1: Channel, 
+    pub ch2: Channel
 }
 
 #[derive(Default)]
 pub struct PCMParams {
-    rx: Channels,
-    tx: Channels,
+    pub rx: Channels,
+    pub tx: Channels,
     rxon:   u32, //Receieve on.
     txon:   u32, //Transmit on.
     fsm:    u32, //Frame master

@@ -312,7 +312,8 @@ pub struct RegisterBlockBSC {
 
 pub trait I2C {
     fn ptr() -> *const RegisterBlockBSC;
-    fn init(&self);
+    fn init();
+    fn init_internal(&self);
     fn reset(&self);
     fn poll_error(&self) -> Result<(), ERROR>;
     fn poll_done(&self) -> Result<(), ERROR>;
@@ -343,7 +344,11 @@ impl I2C for I2C1 {
         BSC1_BASE as *const _
     }
 
-    fn init(&self) {
+    fn init() { 
+        I2C1::default().init_internal();
+    }
+
+    fn init_internal(&self) {
         GPFSEL::new().fsel_i2c1(); //Select the GPIO pins for I2C1.
 
         self.DIV.modify(DIV::CDIV.val(0xFFFF));   //Value of 0 defaults to divsor of 32768.
@@ -497,11 +502,5 @@ impl I2C for I2C1 {
         }
         debug::out("i2c.read(): Xfer finished. Poll until done.\r\n");
         return self.poll_done();
-    }
-}
-
-impl I2C1 {
-    pub const fn new() -> I2C1 {
-        I2C1
     }
 }
