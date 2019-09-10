@@ -143,7 +143,7 @@ impl <II2C, ITIMER> Default for Ultra2<II2C, ITIMER> where
 }
 
 impl <II2C, ITIMER> Ultra2<II2C, ITIMER> where 
-    II2C: i2c::I2C + Default,
+    II2C:   i2c::I2C + Default,
     ITIMER: timer::Timer + Default
 {
 

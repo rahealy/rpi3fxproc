@@ -29,9 +29,13 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use peripherals::{debug, timer, i2s};
-use peripherals::i2c::{I2C, I2C1};
-use peripherals::timer::Timer1;
+use peripherals::{
+    debug, 
+    i2s,
+    uart::Uart0,
+    i2c::{ I2C, I2C1 },
+    timer::{ Timer1 }
+};
 use hats::ultra2::Ultra2;
 
 mod startup; //Pull in startup code.
@@ -52,7 +56,7 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
-//Init the debug system for human readable text output on Uart.
+    Uart0::init();
     debug::init();
     I2C1::init();
 
