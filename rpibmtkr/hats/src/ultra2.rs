@@ -160,7 +160,6 @@ impl <II2C, ITIMER> Ultra2<II2C, ITIMER> where
 
         self.timer.one_shot(2_000_000);
 
-        debug::out("ultra2.init(): Initializing cs4265.\r\n");
         if let Err(err) = self.cs4265.init() {
             match err {
                 cs4265::ERROR::I2C(e) => {

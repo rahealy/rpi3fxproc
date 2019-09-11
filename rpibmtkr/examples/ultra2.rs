@@ -60,6 +60,10 @@ fn main() -> ! {
     debug::init();
     I2C1::init();
 
+    debug::out("\r\n");
+    for _ in 0..72 { debug::out(".") }
+    debug::out("\r\n");
+    
 //Ultra2 uses a cs4265 which relies on i2c bus for control. Use RPi I2C1.
 //Various Ultra2 operations requre a delay so use RPi System Timer1
     let mut u2 = Ultra2::<I2C1, Timer1>::default();

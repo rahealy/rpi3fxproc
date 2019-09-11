@@ -26,6 +26,7 @@ use super::MMIO_BASE;
 use core::ops;
 use register::register_bitfields;
 use register::mmio::ReadWrite;
+use crate::debug;
 
 
 /**********************************************************************
@@ -178,6 +179,7 @@ const CM_PCMDIV_OFFSET: u32 = 0x0010_109C;
 const CM_PCMDIV_BASE:   u32 = MMIO_BASE + CM_PCMDIV_OFFSET; 
 
 ///Clock divder.
+#[derive(Default)]
 struct PCMDIV;
 
 impl ops::Deref for PCMDIV {
@@ -189,9 +191,6 @@ impl ops::Deref for PCMDIV {
 }
 
 impl PCMDIV {
-    pub const fn new() -> PCMDIV {
-        PCMDIV
-    }
 
     fn ptr() -> *const ReadWrite<u32, CM_PCMDIV::Register> {
         CM_PCMDIV_BASE as *const _
@@ -272,6 +271,7 @@ const CM_PCMCTL_BASE:   u32 = MMIO_BASE + CM_PCMCTL_OFFSET;
 
 
 ///Clock control.
+#[derive(Default)]
 struct PCMCTL;
 
 impl ops::Deref for PCMCTL {
@@ -283,9 +283,6 @@ impl ops::Deref for PCMCTL {
 }
 
 impl PCMCTL {
-    pub const fn new() -> PCMCTL {
-        PCMCTL
-    }
 
     fn ptr() -> *const ReadWrite<u32, CM_PCMCTL::Register> {
         CM_PCMCTL_BASE as *const _
@@ -313,7 +310,7 @@ impl PCMCTL {
         );
 
 //Set divider frequency to 19.2 MHz / (10 + (1/4095)) = 1.9199531147 MHz
-        PCMDIV::new().set(10, 1);
+        PCMDIV::default().set(10, 1);
 
 //Keep the control values used to set divider and enable. Wait until started.
         self.modify (
@@ -842,7 +839,9 @@ pub struct I2S;
 
 impl I2S {
     pub fn init(&self, params: &PCMParams) {
+        debug::out("i2s.init(): Initializing I2S.\r\n");
         GPFSEL::default().fsel_i2s();
         PCM::default().init(params);
+        debug::out("i2s.init(): I2S initialized.\r\n");
     }
 }
