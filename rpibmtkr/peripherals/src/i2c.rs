@@ -451,6 +451,7 @@ impl I2C for I2C1 {
                                         S::TXW::SET) 
             {  //FIFO not full and needs writing.
                 assert!(i < len);
+                debug::out(".");
                 self.FIFO.set(data[i] as u32);
                 i += 1;
             }
