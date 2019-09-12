@@ -23,6 +23,8 @@
  */ 
 
 /*
+ * Reset Pin
+ * RPi I/O Pin 29, BCM5,  Function: OUTPUT.
  * I2S Pins
  * RPi I/O Pin 12, BCM18, Function: PCM_CLK, I2S: BCLK
  * RPi I/O Pin 35, BCM19, Function: PCM_FS, I2S: LRCLK
@@ -53,6 +55,7 @@
  *
  */
 
+use core::ops;
 use peripherals::MMIO_BASE;
 use peripherals::{debug, i2c, i2s, timer};
 use drivers::cs4265;
@@ -82,7 +85,7 @@ impl ERROR {
 
 
 /**********************************************************************
- * GPIO
+ * GPFSEL
  *********************************************************************/
 
 register_bitfields! {
@@ -94,34 +97,63 @@ register_bitfields! {
         FSEL5 OFFSET(15) NUMBITS(3) [
             OUTPUT = 0b001
         ]
-    ],
-
-///GPIO Set pin.
-    GPSET0 [
-///Set RPi I/O Pin 29 (BCM5) to bring ultra2 out of reset condition.
-        PSET5 OFFSET(5) NUMBITS(1) []
-    ],
-
-///GPIO Clear pin.
-    GPCLR0 [
-///Clear RPi Pin 29 (BCM5) to put ultra2 into reset condition.
-        PCLR5 OFFSET(5) NUMBITS(1) []
     ]
 }
 
 
 ///
-///GPFSEL2 alternative function select register - 0x7E200008
+///GPFSEL0 alternative function select register - 0x7E200000
 ///
 const GPFSEL0_OFFSET: u32 = 0x0020_0000;
 const GPFSEL0_BASE:   u32 = MMIO_BASE + GPFSEL0_OFFSET;
 
 ///
-///Function select register for the GPIO pin used by the Ultra2 board.
+///Register block representing all the GPFSEL registers.
 ///
-pub const GPFSEL0: *const ReadWrite<u32, GPFSEL0::Register> =
-    GPFSEL0_BASE as *const ReadWrite<u32, GPFSEL0::Register>;
+#[allow(non_snake_case)]
+#[repr(C)]
+struct RegisterBlockGPFSEL {
+    GPFSEL0: ReadWrite<u32, GPFSEL0::Register>
+}
 
+///
+///Implements accessors to the GPFSEL registers. 
+///
+#[derive(Default)]
+struct GPFSEL;
+
+impl ops::Deref for GPFSEL {
+    type Target = RegisterBlockGPFSEL;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*Self::ptr() }
+    }
+}
+
+impl GPFSEL {
+    fn ptr() -> *const RegisterBlockGPFSEL {
+        GPFSEL0_BASE as *const _
+    }
+
+    fn fsel_ultra2(&self) {
+        self.GPFSEL0.modify(GPFSEL0::FSEL5::OUTPUT);
+    }
+}
+
+
+/**********************************************************************
+ * GPSET
+ *********************************************************************/
+
+register_bitfields! {
+    u32,
+
+///GPIO Set pin.
+    GPSET0 [
+///Set RPi I/O Pin 29 (BCM5) to bring ultra2 out of reset condition.
+        PSET5 OFFSET(5) NUMBITS(1) []
+    ]
+}
 
 ///
 ///GPSET0 pin set register - 0x7E20001C
@@ -130,11 +162,48 @@ const GPSET0_OFFSET: u32 = 0x0020_001C;
 const GPSET0_BASE:   u32 = MMIO_BASE + GPSET0_OFFSET;
 
 ///
-///Output set register for the GPIO pin used by the Ultra2 board.
+///Register block representing all the GPSET registers.
 ///
-pub const GPSET0: *const ReadWrite<u32, GPSET0::Register> =
-    GPSET0_BASE as *const ReadWrite<u32, GPSET0::Register>;
+#[allow(non_snake_case)]
+#[repr(C)]
+struct RegisterBlockGPSET {
+    GPSET0: ReadWrite<u32, GPSET0::Register>
+}
 
+///
+///Implements accessors to the GPSET registers. 
+///
+#[derive(Default)]
+struct GPSET;
+
+impl ops::Deref for GPSET {
+    type Target = RegisterBlockGPSET;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*Self::ptr() }
+    }
+}
+
+impl GPSET {
+    fn ptr() -> *const RegisterBlockGPSET {
+        GPSET0_BASE as *const _
+    }
+}
+
+
+/**********************************************************************
+ * GPCLR
+ *********************************************************************/
+
+register_bitfields! {
+    u32,
+
+///GPIO Clear pin.
+    GPCLR0 [
+///Clear RPi Pin 29 (BCM5) to put ultra2 into reset condition.
+        PCLR5 OFFSET(5) NUMBITS(1) []
+    ]
+}
 
 ///
 ///GPCLR0 pin set register - 0x7E200028
@@ -142,11 +211,35 @@ pub const GPSET0: *const ReadWrite<u32, GPSET0::Register> =
 const GPCLR0_OFFSET: u32 = 0x0020_0028;
 const GPCLR0_BASE:   u32 = MMIO_BASE + GPCLR0_OFFSET;
 
+
 ///
-///Output clear register for the GPIO pin used by the Ultra2 board.
+///Register block representing all the GPCLR registers.
 ///
-pub const GPCLR0: *const ReadWrite<u32, GPCLR0::Register> =
-    GPCLR0_BASE as *const ReadWrite<u32, GPCLR0::Register>;
+#[allow(non_snake_case)]
+#[repr(C)]
+struct RegisterBlockGPCLR {
+    GPCLR0: ReadWrite<u32, GPCLR0::Register>
+}
+
+///
+///Implements accessors to the GPCLR registers. 
+///
+#[derive(Default)]
+struct GPCLR;
+
+impl ops::Deref for GPCLR {
+    type Target = RegisterBlockGPCLR;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*Self::ptr() }
+    }
+}
+
+impl GPCLR {
+    fn ptr() -> *const RegisterBlockGPCLR {
+        GPCLR0_BASE as *const _
+    }
+}
 
 
 /**********************************************************************
@@ -183,18 +276,24 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
     II2S: i2s::I2S + Default,
     ITIMER: timer::Timer + Default
 {
+    pub fn reset(&self, on: bool) {
+        if on {
+            GPSET::default().GPSET0.modify(GPSET0::PSET5::CLEAR);
+            debug::out("ultra2.reset(): Reset enabled.\r\n");
+        } else {
+            debug::out("ultra2.reset(): Releasing reset. Waiting two seconds for settle.\r\n");
+            GPSET::default().GPSET0.modify(GPSET0::PSET5::SET);
+            self.timer.one_shot(2_000_000);
+        }
+    }
 
 ///
-/// Bring ultra2 out of reset. Poll for condition of CS4265 SDOUT pin 
-/// and save i2c address for use in further accesses.
+///Intialize board.
 ///
     pub fn init(&mut self) -> Result<(), ERROR> {
-        debug::out("ultra2.init(): Releasing reset. Waiting two seconds for settle.\r\n");
-        unsafe {
-            (*GPFSEL0).modify(GPFSEL0::FSEL5::OUTPUT);
-            (*GPSET0).modify(GPSET0::PSET5::SET);
-        }
-        self.timer.one_shot(2_000_000);
+//Select the reset pin on the RPi and release the reset.
+        GPFSEL::default().fsel_ultra2();
+        self.reset(false);
 
 //Initialize CS4265.
         if let Err(err) = self.cs4265.init() {
