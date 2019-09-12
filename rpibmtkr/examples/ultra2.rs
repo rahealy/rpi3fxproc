@@ -31,10 +31,10 @@
 use core::panic::PanicInfo;
 use peripherals::{
     debug, 
-    i2s,
     uart::Uart0,
-    i2c::{ I2C, I2C1 },
-    timer::{ Timer1 }
+    i2s::{I2S, I2S0},
+    i2c::{I2C, I2C1},
+    timer::{Timer1}
 };
 use hats::ultra2::Ultra2;
 
@@ -59,14 +59,18 @@ fn main() -> ! {
     Uart0::init();
     debug::init();
     I2C1::init();
+    I2S0::init();
 
+    
+//Write a bunch of dots to mark boot.
     debug::out("\r\n");
     for _ in 0..72 { debug::out(".") }
     debug::out("\r\n");
     
 //Ultra2 uses a cs4265 which relies on i2c bus for control. Use RPi I2C1.
+//CS4265 communicates audio data via i2s. Use RPi I2S0.
 //Various Ultra2 operations requre a delay so use RPi System Timer1
-    let mut u2 = Ultra2::<I2C1, Timer1>::default();
+    let mut u2 = Ultra2::<I2C1, I2S0, Timer1>::default();
 
     if let Err(err) = u2.init() {
         debug::out("main(): Error ultra2.init() failed - ");     
@@ -74,34 +78,6 @@ fn main() -> ! {
         debug::out("\r\n");
         panic!();
     }
-
-//The cs425 uses i2s to communicate audio data to the RPi.
-//Set up RPi i2s as slave for 2 channel 48kHz, 16bit audio. 
-    let mut i2s_parms = i2s::PCMParams::default();
-
-    i2s_parms.rxon(true).
-              txon(true).
-              fs_master(false).
-              clk_master(false).
-              chlen(16,16);
-
-    i2s_parms.rx.ch1.enable(true).
-                     width(16).
-                     pos(1);
-                     
-    i2s_parms.rx.ch2.enable(true).
-                     width(16).
-                     pos(17);
-                     
-    i2s_parms.tx.ch1.enable(true).
-                     width(16).
-                     pos(1);
-                     
-    i2s_parms.tx.ch2.enable(true).
-                     width(16).
-                     pos(17);
- 
-    i2s::I2S::default().init(&i2s_parms);
 
     loop {
     }
