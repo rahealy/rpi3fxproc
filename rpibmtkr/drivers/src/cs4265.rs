@@ -552,7 +552,7 @@ impl <I> CS4265<I> where
 ///
     pub fn load(&self) -> Result<(), ERROR> {
 //Load settings.
-        match self.i2c.write(self.addr, 
+        match self.i2c.write(self.addr,
                              RegisterAddress::POWERCTL as u8, 
                              &self.reg.data[1..])
         {
