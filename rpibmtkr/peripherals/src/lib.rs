@@ -24,7 +24,6 @@
 
 #![no_std]
 
-//pub mod gpio;
 pub mod mbox;
 pub mod uart;
 pub mod i2c;
