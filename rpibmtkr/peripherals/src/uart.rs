@@ -26,85 +26,11 @@
 use super::MMIO_BASE;
 use crate::mbox;
 use crate::debug;
-use core::{
-    ops,
-    sync::atomic::{compiler_fence, Ordering},
-};
+use crate::gpfsel::GPFSEL;
+use core::ops;
+use core::sync::atomic::{compiler_fence, Ordering};
 use cortex_a::asm;
 use register::{mmio::*, register_bitfields};
-
-
-/**********************************************************************
- * GPFSEL
- *********************************************************************/
-
-register_bitfields! {
-    u32,
-
-/// GPIO Function Select 1
-    GPFSEL1 [
-/// I/O Pin 15 (RXD)
-        FSEL15 OFFSET(15) NUMBITS(3) [
-            RXD0 = 0b100, // UART0 (PL011) - Alternate function 0
-            RXD1 = 0b010  // UART1 (Mini UART) - Alternate function 5
-
-        ],
-
-/// I/O Pin 14 (TXD)
-        FSEL14 OFFSET(12) NUMBITS(3) [
-            TXD0 = 0b100, // UART0 (PL011) - Alternate function 0
-            TXD1 = 0b010  // UART1 (Mini UART) - Alternate function 5
-        ]
-    ]
-}
-
-
-///
-///GPFSEL1 alternative function select register - 0x7E200004
-///
-const GPFSEL1_OFFSET: u32 = 0x0020_0004;
-const GPFSEL1_BASE:   u32 = MMIO_BASE + GPFSEL1_OFFSET;
-
-
-///
-/// GPFSEL peripheral registers
-///
-#[allow(non_snake_case)]
-#[repr(C)]
-pub struct RegisterBlockGPFSEL {
-    GPFSEL1: ReadWrite<u32, GPFSEL1::Register>, // 0x00200004
-}
-
-
-///
-///Implements accessors to the GPFSEL registers. 
-///
-#[derive(Default)]
-pub struct GPFSEL;
-
-impl ops::Deref for GPFSEL {
-    type Target = RegisterBlockGPFSEL;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*Self::ptr() }
-    }
-}
-
-impl GPFSEL {
-    fn ptr() -> *const RegisterBlockGPFSEL {
-        GPFSEL1_BASE as *const _
-    }
-
-    pub fn fsel_uart0(&self) {
-        self.GPFSEL1.modify(GPFSEL1::FSEL14::TXD0 + 
-                            GPFSEL1::FSEL15::RXD0);
-    }
-
-    pub fn fsel_uart1(&self) {
-        self.GPFSEL1.modify(GPFSEL1::FSEL14::TXD1 + 
-                            GPFSEL1::FSEL15::RXD1);
-    }
-}
 
 
 /**********************************************************************

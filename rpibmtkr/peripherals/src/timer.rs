@@ -23,7 +23,6 @@
  */ 
 
 use super::MMIO_BASE;
-use super::TIMER_MIN_RESOLUTION_MSECS;
 use register::register_bitfields;
 use register::mmio::ReadWrite;
 use core::ops;
@@ -140,6 +139,7 @@ impl Timer for Timer1 {
  * Timer3
  *********************************************************************/
 
+#[derive(Default)]
 pub struct Timer3;
 
 impl ops::Deref for Timer3 {
@@ -161,7 +161,7 @@ impl Timer for Timer3 {
 ///
     fn one_shot(&self, msecs: u32) {
         let tval = self.CLO.get() + msecs; 
-        self.C1.set(tval);
+        self.C3.set(tval);
         self.CS.modify(CS::M3::SET);
         while !(self.CS.is_set(CS::M3)) {}
     }

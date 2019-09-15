@@ -287,6 +287,40 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         }
     }
 
+
+    fn config_i2s(&self) {
+//The cs4265 uses i2s to communicate audio data to the RPi.
+//Set up RPi i2s as slave for 2 channel 48kHz, 24bit audio. 
+        debug::out("ultra2.config_i2s(): Configuring RPi i2s.\r\n");
+        let mut pcm = i2s::PCMParams::default();
+
+        pcm.rxon(false).
+            txon(true).
+            fs_master(false).
+            clk_master(false).
+            chlen(32,32);  //CS4265 has a 2x32bit frame length.
+
+        pcm.rx.ch1.enable(false).
+                   width(24). //Sample width is 24 bits.
+                   pos(1);    //Sample data starts 1 clock after frame begins.
+
+        pcm.rx.ch2.enable(false).
+                   width(24). //Sample width is 24 bits.
+                   pos(33);   //Data starts 33 clocks after frame begins.
+
+        pcm.tx.ch1.enable(true).
+                   width(24). //Sample width is 24 bits.
+                   pos(1);    //Data starts 1 clock after frame begins.
+
+        pcm.tx.ch2.enable(true).
+                   width(24). //Sample width is 24 bits.
+                   pos(33);   //Data starts 33 clocks after frame begins.
+
+        debug::out("ultra2.config_i2s(): Loading i2s configuration.\r\n");
+        self.i2s.load(&pcm);
+        debug::out("ultra2.config_i2s(): RPi i2s configured.\r\n");
+    }
+
 ///
 ///Intialize board.
 ///
@@ -310,14 +344,19 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 //Configure CS4265
         debug::out("ultra2.init(): Configuring CS4265.\r\n");
         
-//Set power control register.
+//Power down CS4265.
+        debug::out("ultra2.init(): Powering down CS4265.\r\n");
         self.cs4265.reg.POWERCTL.write (
             cs4265::POWERCTL::FREEZE::SET    + //Freeze the registers.
             cs4265::POWERCTL::PDN_MIC::SET   + //Power down the microphone.
-            cs4265::POWERCTL::PDN_ADC::CLEAR + //Power up the ADC
-            cs4265::POWERCTL::PDN_DAC::CLEAR + //Power up the DAC
+            cs4265::POWERCTL::PDN_ADC::SET   + //Power down the ADC
+            cs4265::POWERCTL::PDN_DAC::SET   + //Power down the DAC
             cs4265::POWERCTL::PDN::SET         //Power down the whole device until load.
         );
+
+        if let Err(err) = self.cs4265.ld_reg_powerctl() {
+            return Err(ERROR::CS4265(err));
+        }
 
 //Set DAC control.
         self.cs4265.reg.DACCTL1.write (
@@ -398,40 +437,59 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         );
 
 //Load configuration.
-        if let Err(err) = self.cs4265.load() {
+        debug::out("ultra2.init(): Loading CS4265 configuration registers.\r\n");
+        if let Err(err) = self.cs4265.ld_regs() {
+            return Err(ERROR::CS4265(err));
+        }
+        debug::out("ultra2.init(): CS4265 configured.\r\n");
+
+        debug::out("ultra2.init(): Powering up CS4265.\r\n");
+        self.cs4265.reg.POWERCTL.write (
+            cs4265::POWERCTL::FREEZE::CLEAR   + //Unfreeze the registers.
+            cs4265::POWERCTL::PDN_MIC::SET    + //Power down the microphone.
+            cs4265::POWERCTL::PDN_ADC::SET    + //Power down the ADC
+            cs4265::POWERCTL::PDN_DAC::CLEAR  + //Power up DAC
+            cs4265::POWERCTL::PDN::CLEAR        //Power up device.
+        );
+
+        if let Err(err) = self.cs4265.ld_reg_powerctl() {
+            return Err(ERROR::CS4265(err));
+        }
+        debug::out("ultra2.init(): CS4265 powered up.\r\n");
+
+//Initialize i2s().
+        self.config_i2s();
+
+        debug::out("ultra2.init(): Polling CS4265 status for 5 seconds.\r\n");
+        for _ in 0..5 {
+            if let Err(err) = self.cs4265.rd_reg_status() {
+                return Err(ERROR::CS4265(err));
+            } else {
+                if self.cs4265.reg.STATUS.is_set(cs4265::STATUS::EFTC) {
+                    debug::out("ultra2.init(): Completion of an E to F C-Buffer translation.");
+                }
+
+                if self.cs4265.reg.STATUS.is_set(cs4265::STATUS::CLKERR) {
+                    debug::out("ultra2.init(): Clock error.");
+                }
+
+                if self.cs4265.reg.STATUS.is_set(cs4265::STATUS::ADCOVFL) {
+                    debug::out("ultra2.init(): ADC overflow condition.");
+                }
+
+                if self.cs4265.reg.STATUS.is_set(cs4265::STATUS::ADCUNDRFL) {
+                    debug::out("ultra2.init(): ADC underflow condition.");
+                }
+                
+                self.timer.one_shot(1_000_000);
+            }
+        }
+
+        if let Err(err) = self.cs4265.verify_regs() {
             return Err(ERROR::CS4265(err));
         }
 
-        debug::out("ultra2.init(): CS4265 configured. Waiting power up.\r\n");
-
-//The cs4265 uses i2s to communicate audio data to the RPi.
-//Set up RPi i2s as slave for 2 channel 48kHz, 16bit audio. 
-        let mut pcm = i2s::PCMParams::default();
-
-        pcm.rxon(true).
-            txon(true).
-            fs_master(false).
-            clk_master(false).
-            chlen(32,32);  //CS4265 has a 64 bit frame length.
-
-        pcm.rx.ch1.enable(true).
-                   width(24). //Sample width is 24 bits.
-                   pos(1);    //Sample data starts 1 clock after frame begins.
-
-        pcm.rx.ch2.enable(true).
-                   width(24). //Sample width is 24 bits.
-                   pos(33);   //Data starts 33 clocks after frame begins.
-
-        pcm.tx.ch1.enable(true).
-                   width(24). //Sample width is 24 bits.
-                   pos(1);    //Data starts 1 clock after frame begins.
-
-        pcm.tx.ch2.enable(true).
-                   width(24). //Sample width is 24 bits.
-                   pos(33);   //Data starts 33 clocks after frame begins.
-
-        self.i2s.load(&pcm);
-
+        debug::out("ultra2.init(): Ultra2 initialized.\r\n");
         return Ok(());
     }
 }

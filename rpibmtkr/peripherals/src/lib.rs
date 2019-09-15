@@ -24,16 +24,17 @@
 
 #![no_std]
 
-pub mod mbox;
-pub mod uart;
+pub mod clk;
+pub mod debug;
+pub mod gpfsel;
 pub mod i2c;
 pub mod i2s;
+pub mod mbox;
 pub mod pwm;
 pub mod timer;
-pub mod debug;
+pub mod uart;
 
 pub const MMIO_BASE: u32 = 0x3F00_0000;         //Peripheral access is derived from this base memory offset.
-pub const TIMER_MIN_RESOLUTION_MSECS: u32 = 10; //Minimum number of ticks for reliable timer operation.
 
 #[cfg(test)]
 mod tests {

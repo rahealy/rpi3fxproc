@@ -23,18 +23,17 @@
  */
 
 /*
- * The RPi has four hardware timers. Two are used by the GPU leaving two for
- * general purpose use. This example demonstrates how to use the timer
- * routines.
- *
+ * Test/Debug the i2s interface.
  */
 #![no_std]
 #![no_main]
 
 use core::panic::PanicInfo;
-use peripherals::debug; 
-use peripherals::uart::Uart0;
-use peripherals::timer::{Timer, Timer1, Timer3};
+use peripherals::{
+    debug, 
+    uart::Uart0,
+    i2s::{I2S, I2S0, PCM, PCMParams},
+};
 
 mod startup; //Pull in startup code.
 
@@ -50,25 +49,54 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 
 
 ///
-/// Main loop exercises timers.
+/// Main loop.
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
     Uart0::init();
     debug::init();
-    
-    let t1 = Timer1::default();
-    let t3 = Timer3::default();
+
+//Write a bunch of dots to mark boot.
+    debug::out("\r\n");
+    for _ in 0..72 { debug::out(".") }
+    debug::out("\r\n");
+
+    I2S0::init();
+
+//Test I2S functionality.
+    let i2s0 = I2S0::default();
+    let mut pcm  = PCMParams::default();
+
+    pcm.rxon(true).
+        txon(true).
+        smplrt(48_000_000).
+        fs_master(true).
+        clk_master(true).
+        chlen(32,32);  //CS4265 has a 64 bit frame length.
+
+    pcm.rx.ch1.enable(false).
+                width(24). //Sample width is 24 bits.
+                pos(1);    //Sample data starts 1 clock after frame begins.
+
+    pcm.rx.ch2.enable(false).
+                width(24). //Sample width is 24 bits.
+                pos(33);   //Data starts 33 clocks after frame begins.
+
+    pcm.tx.ch1.enable(true).
+                width(24). //Sample width is 24 bits.
+                pos(1);    //Data starts 1 clock after frame begins.
+
+    pcm.tx.ch2.enable(true).
+                width(24). //Sample width is 24 bits.
+                pos(33);   //Data starts 33 clocks after frame begins.
+
+    i2s0.load(&pcm);
+
+    if let Err(err) = PCM::default().tx_test() {
+        debug::out("Error while running tx_test(): ");
+        debug::out(err.msg());
+    }
 
     loop {
-//Exercise timer 1.
-        debug::out("Timer1: Begin one second one shot delay.\r\n");
-        t1.one_shot(1_000_000);
-        debug::out("Timer1: End one second one shot delay.\r\n");
-
-//Exercise timer 3.
-        debug::out("Timer3: Begin one second one shot delay.\r\n");
-        t3.one_shot(1_000_000);
-        debug::out("Timer3: End one second one shot delay.\r\n");
     }
 }

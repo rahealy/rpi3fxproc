@@ -61,6 +61,7 @@ use register::register_bitfields;
 use register::mmio::ReadWrite;
 use core::ops;
 use crate::debug;
+use crate::gpfsel::GPFSEL;
 
 
 /**********************************************************************
@@ -89,81 +90,6 @@ impl ERROR {
             ERROR::TIMEOUT  => "Slave did not reply in time.",
             ERROR::DONE     => "Transaction is unexpectedly done."
         }
-    }
-}
-
-
-/**********************************************************************
- * GPFSEL
- *********************************************************************/
-
-register_bitfields! {
-    u32,
-
-/// GPIO Function Select 0
-    GPFSEL0 [
-/// I/O Pin 2 (SDA1)
-        FSEL2 OFFSET(6) NUMBITS(3) [
-            INPUT = 0b000,
-            SDA1 = 0b100 // I2C1 SDA1 - Alternate function 0
-        ],
-
-/// I/O Pin 3 (SCL1)
-        FSEL3 OFFSET(9) NUMBITS(3) [
-            INPUT = 0b000,
-            SCL1 = 0b100 // I2C1 SCL1 - Alternate function 0
-        ]
-    ]
-}
-
-
-///
-///GPFSEL0 alternative function select register - 0x7E200000
-///
-const GPFSEL0_OFFSET: u32 = 0x0020_0000;
-const GPFSEL0_BASE:   u32 = MMIO_BASE + GPFSEL0_OFFSET;
-
-
-///
-///Register block representing all the GPFSEL registers.
-///
-#[allow(non_snake_case)]
-#[repr(C)]
-struct RegisterBlockGPFSEL {
-    GPFSEL0: ReadWrite<u32, GPFSEL0::Register>
-}
-
-///
-///Implements accessors to the GPFSEL registers. 
-///
-struct GPFSEL;
-
-impl ops::Deref for GPFSEL {
-    type Target = RegisterBlockGPFSEL;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*Self::ptr() }
-    }
-}
-
-impl GPFSEL {
-    fn ptr() -> *const RegisterBlockGPFSEL {
-        GPFSEL0_BASE as *const _
-    }
-
-    const fn new() -> GPFSEL {
-        GPFSEL
-    }
-
-///
-///Select alternate GPIO pin functions for the I2C1 peripheral.
-///
-    fn fsel_i2c1(&self) {
-        self.GPFSEL0.modify(GPFSEL0::FSEL2::INPUT + 
-                            GPFSEL0::FSEL3::INPUT);
-
-        self.GPFSEL0.modify(GPFSEL0::FSEL2::SDA1 + 
-                            GPFSEL0::FSEL3::SCL1);
     }
 }
 
@@ -349,7 +275,7 @@ impl I2C for I2C1 {
     }
 
     fn init_internal(&self) {
-        GPFSEL::new().fsel_i2c1(); //Select the GPIO pins for I2C1.
+        GPFSEL::default().fsel_i2c1(); //Select the GPIO pins for I2C1.
 
         self.DIV.modify(DIV::CDIV.val(0xFFFF));   //Value of 0 defaults to divsor of 32768.
         self.CLKT.modify(CLKT::TOUT.val(0));      //Turn off clock stretching since it's buggy.
@@ -408,6 +334,12 @@ impl I2C for I2C1 {
                 break;
             }
         }
+        
+        loop {
+            if !self.S.is_set(S::TA) {
+                break;
+            }
+        }
         return Ok(());
     }
 
@@ -427,18 +359,18 @@ impl I2C for I2C1 {
         self.C.modify(C::READ::CLEAR);   //Clear READ bit.
 
         if let Err(err) = self.poll_error() {
-            debug::out("i2c.write(): poll_error().\r\n");
+//            debug::out("i2c.write(): poll_error().\r\n");
             return Err(err);
         }
 
 //Write slave register address.
-        debug::out("i2c.write(): Write regaddr.\r\n");
+//        debug::out("i2c.write(): Write regaddr.\r\n");
         self.FIFO.set(reg as u32);
 
 //Start transfer.
-        debug::out("i2c.write(): Start xfer.\r\n");
+//        debug::out("i2c.write(): Start xfer.\r\n");
         self.C.modify(C::START::SET);
-        debug::out("i2c.write(): Xfer started.\r\n");
+//        debug::out("i2c.write(): Xfer started.\r\n");
 
 //Keep the FIFO filled until error or all bytes written.
         while i < len {
@@ -450,7 +382,6 @@ impl I2C for I2C1 {
             while self.S.matches_all(S::TXD::SET + 
                                         S::TXW::SET) 
             {  //FIFO not full and needs writing.
-                assert!(i < len);
                 debug::out(".");
                 self.FIFO.set(data[i] as u32);
                 i += 1;
@@ -466,17 +397,12 @@ impl I2C for I2C1 {
         let len: usize = data.len();
         let mut i: usize = 0;
 
-        if self.S.is_set(S::TA) {        //I2C is already in a transfer.
-            return Err(ERROR::ACTIVE);
-        }
-
 //Write the slave device register address to read from.
-        debug::out("i2c.read(): Write register.\r\n");
+        debug::out("i2c.read(): Write dest register.\r\n");
         if let Err(err) = self.write(addr, reg, &[]) {
             return Err(err);
         }
-        debug::out("i2c.read(): Register written.\r\n");
-
+//        debug::out("i2c.read(): Dest register written.\r\n");
 
 //Initialize and read.
         debug::out("i2c.read(): Reset and initialize.\r\n");
@@ -485,10 +411,10 @@ impl I2C for I2C1 {
         self.A.set(addr as u32);         //Set the slave address.
         self.C.modify(C::READ::SET);     //Set BSC to read operation.
 
-        debug::out("i2c.read(): Start xfer.\r\n");
+//        debug::out("i2c.read(): Start xfer.\r\n");
         self.C.modify(C::CLEAR::SET +    //Clear FIFO.
                       C::START::SET);    //Start transfer.
-        debug::out("i2c.read(): Xfer started.\r\n");
+//        debug::out("i2c.read(): Xfer started.\r\n");
 
 //Keep the FIFO from overflowing until error or all bytes read.
         while i < len {
@@ -497,6 +423,7 @@ impl I2C for I2C1 {
             }
 
             while self.S.is_set(S::RXD) { //Read until empty.
+                debug::out(".");
                 data[i] = self.FIFO.get() as u8;
                 i += 1;
             }

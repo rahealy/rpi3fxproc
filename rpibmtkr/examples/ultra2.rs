@@ -79,6 +79,13 @@ fn main() -> ! {
         panic!();
     }
 
+//     if let Err(err) = I2S0::tx_test() {
+//         debug::out("main(): Error tx_test() failed - ");     
+//         debug::out(err.msg());
+//         debug::out("\r\n");
+//         panic!();
+//     }
+
     loop {
     }
 }

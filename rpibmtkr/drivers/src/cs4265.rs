@@ -430,6 +430,21 @@ impl <I> CS4265<I> where
         CS4265 { ..Default::default() }
     }
 
+    pub fn rd_reg_status(&mut self) -> Result<(), ERROR> {
+        match self.i2c.read(self.addr,
+                             RegisterAddress::STATUS as u8, 
+                             &mut self.reg.data[1..2])
+        {
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
+        }        
+    }
+
 ///
 ///Poll chip at given address for the chip id.
 ///
@@ -518,23 +533,12 @@ impl <I> CS4265<I> where
     }
 
 ///
-///Set or release the CS4265 from the power down state. I2C register
-///access still available in powerdown mode.
+///Load the current power control register value into the CS4265.
 ///
-    pub fn power_down(&self, pdn: bool) -> Result<(), ERROR> {
-        if pdn {
-            self.reg.POWERCTL.modify (
-                POWERCTL::PDN::SET
-            );
-        } else {
-            self.reg.POWERCTL.modify (
-                POWERCTL::PDN::CLEAR
-            );
-        }
-
+    pub fn ld_reg_powerctl(&self) -> Result<(), ERROR> {
         match self.i2c.write(self.addr,
                              RegisterAddress::POWERCTL as u8, 
-                             &self.reg.data[1..2])
+                             &self.reg.data[12..13])
         {
             Ok(_) => {
                 return Ok(());
@@ -550,7 +554,7 @@ impl <I> CS4265<I> where
 ///
 ///load all the local settings into the CS4265's registers.
 ///
-    pub fn load(&self) -> Result<(), ERROR> {
+    pub fn ld_regs(&self) -> Result<(), ERROR> {
 //Load settings.
         match self.i2c.write(self.addr,
                              RegisterAddress::POWERCTL as u8, 
@@ -564,5 +568,29 @@ impl <I> CS4265<I> where
                 return Err(ERROR::I2C(err));
             }
         }
+    }
+    
+///
+///Read all the registers from the device and verify they match the state.
+///
+    pub fn verify_regs(&self) -> Result<(), ERROR> {
+        let mut cur: RegisterInstance = RegisterInstance::default();
+
+        if let Err(err) = self.i2c.read(self.addr,
+                                        RegisterAddress::POWERCTL as u8, 
+                                        &mut cur.data[1..])
+        {
+            return Err(ERROR::I2C(err));
+        }
+        
+        for i in 1..cur.data.len() {
+            if self.reg.data[i] != cur.data[i] {
+                debug::out("cs4265.verify(): Got difference!\r\n");
+            } else {
+                debug::out("cs4265.verify(): No difference!\r\n");
+            }
+        }
+
+        return Ok(());
     }
 }
