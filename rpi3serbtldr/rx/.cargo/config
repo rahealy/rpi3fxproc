@@ -1,0 +1,16 @@
+#
+# config
+#  Pass additional flags to cargo when building for the 
+#  aarch64-unknown-none target used by the RPi3.
+#
+# Derived from:
+#  https://github.com/rust-embedded/rust-raspi3-OS-tutorials/tree/master/01_bareminimum
+#
+
+[target.aarch64-unknown-none]
+rustflags = [
+  "-C", "link-arg=-Tsrc/link.ld",     #Use linker script rx/src/link.ld
+  "-C", "target-feature=-fp-armv8",   #Disable floating point operations
+  "-C", "target-cpu=cortex-a53",      #RPi3 CPU is a cortex-a53 variant
+  "-C", "relocation-model=pic",       #Addresses in code need to be relative to current progam counter.
+] 
