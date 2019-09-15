@@ -31,7 +31,9 @@
 
 use register::register_bitfields;
 use register::mmio::ReadWrite;
-use peripherals::{PERIPHERALS, i2c};
+use peripherals::{debug, i2c};
+use core::mem;
+use core::ops;
 
 /**********************************************************************
  * ERROR
@@ -58,12 +60,6 @@ impl ERROR {
 
 register_bitfields! {
     u8,
-
-///I2C address of the CS4265 depends on whether the CS4265 SDOUT pin is
-///pulled high or low.
-    CHIPADDR [
-        ADDR OFFSET(1) NUMBITS(7)
-    ],
 
 ///Chip ID register. I2C address 0x01.
     CHIPID [
@@ -132,7 +128,7 @@ register_bitfields! {
 ///MCLK register. I2C address 0x05.
     MCLK [
 ///MCLK frequency divider
-        MCLK OFFSET(4) NUMBITS(3) [
+        DIV OFFSET(4) NUMBITS(3) [
 ///Divide by 1.0
             DIV1_0 = 0b000,
 ///Divide by 1.5
@@ -339,62 +335,75 @@ pub enum RegisterAddress {
 #[allow(non_snake_case)]
 #[repr(C)]
 pub struct RegisterBlock {
-///I2C address of the CS4265 0x00.
-    CHIPADDR: ReadWrite<u8, CHIPADDR::Register>,
-
 ///Chip ID register. I2C address 0x01.
-    CHIPID: ReadWrite<u8, CHIPID::Register>,
+    pub CHIPID: ReadWrite<u8, CHIPID::Register>,
 
-// ///Power control register. I2C address 0x02.
-//     POWERCTL: ReadWrite<u8, POWERCTL::Register>,
-// 
-// ///DAC Control register 1. I2C address 0x03.
-//     DACCTL1: ReadWrite<u8, DACCTL1::Register>,
-// 
-// ///ADC Control register. I2C address 0x04.
-//     ADCCTL: ReadWrite<u8, ADCCTL::Register>,
-// 
-// ///MCLK register. I2C address 0x05.
-//     MCLK: ReadWrite<u8, MCLK::Register>,
-// 
-// ///Signal selection register. I2C address 0x06.
-//     SIGSEL: ReadWrite<u8, SIGSEL::Register>,
-// 
-// ///Programmable gain amplifier Channel B register. I2C address 0x07.
-//     PGAB: ReadWrite<u8, PGAB::Register>,
-// 
-// ///Programmable gain amplifier Channel A register. I2C address 0x08.
-//     PGAA: ReadWrite<u8, PGAA::Register>,
-// 
-// ///Analog input control register. I2C address 0x09.
-//     AICTL: ReadWrite<u8, AICTL::Register>,
-// 
-// ///DAC volume channel A register. I2C address 0x0A.
-//     DACVOLA: ReadWrite<u8, DACVOLA::Register>,
-// 
-// ///DAC volume channel B register. I2C address 0x0B.
-//     DACVOLB: ReadWrite<u8, DACVOLB::Register>,
-// 
-// ///DAC Control register 2. I2C address 0x0C.
-//     DACCTL2: ReadWrite<u8, DACCTL2::Register>,
-// 
-// ///Status register. I2C address 0x0D.
-//     STATUS: ReadWrite<u8, STATUS::Register>,
-// 
-// ///Status mask register. I2C address 0x0E.
-//     STATUSMASK: ReadWrite<u8, STATUSMASK::Register>,
-// 
-// ///Status mode most significant bit register. I2C address 0x0F.
-//     STATUSMODEMSB: ReadWrite<u8, STATUSMODEMSB::Register>,
-// 
-// ///Status mode least significant bit register. I2C address 0x10.
-//     STATUSMODELSB: ReadWrite<u8, STATUSMODELSB::Register>,
-// 
-// ///Transmitter control register 1. I2C address 0x11.
-//     XMITCTL1: ReadWrite<u8, XMITCTL1::Register>,
-// 
-// ///Transmitter control register 2. I2C address 0x12.
-//     XMITCTL2: ReadWrite<u8, XMITCTL2::Register>
+///Power control register. I2C address 0x02.
+    pub POWERCTL: ReadWrite<u8, POWERCTL::Register>,
+
+///DAC Control register 1. I2C address 0x03.
+    pub DACCTL1: ReadWrite<u8, DACCTL1::Register>,
+
+///ADC Control register. I2C address 0x04.
+    pub ADCCTL: ReadWrite<u8, ADCCTL::Register>,
+
+///MCLK register. I2C address 0x05.
+    pub MCLK: ReadWrite<u8, MCLK::Register>,
+
+///Signal selection register. I2C address 0x06.
+    pub SIGSEL: ReadWrite<u8, SIGSEL::Register>,
+
+///Programmable gain amplifier Channel B register. I2C address 0x07.
+    pub PGAB: ReadWrite<u8, PGAB::Register>,
+
+///Programmable gain amplifier Channel A register. I2C address 0x08.
+    pub PGAA: ReadWrite<u8, PGAA::Register>,
+
+///Analog input control register. I2C address 0x09.
+    pub AICTL: ReadWrite<u8, AICTL::Register>,
+
+///DAC volume channel A register. I2C address 0x0A.
+    pub DACVOLA: ReadWrite<u8, DACVOLA::Register>,
+
+///DAC volume channel B register. I2C address 0x0B.
+    pub DACVOLB: ReadWrite<u8, DACVOLB::Register>,
+
+///DAC Control register 2. I2C address 0x0C.
+    pub DACCTL2: ReadWrite<u8, DACCTL2::Register>,
+
+///Status register. I2C address 0x0D.
+    pub STATUS: ReadWrite<u8, STATUS::Register>,
+
+///Status mask register. I2C address 0x0E.
+    pub STATUSMASK: ReadWrite<u8, STATUSMASK::Register>,
+
+///Status mode most significant bit register. I2C address 0x0F.
+    pub STATUSMODEMSB: ReadWrite<u8, STATUSMODEMSB::Register>,
+
+///Status mode least significant bit register. I2C address 0x10.
+    pub STATUSMODELSB: ReadWrite<u8, STATUSMODELSB::Register>,
+
+///Transmitter control register 1. I2C address 0x11.
+    pub XMITCTL1: ReadWrite<u8, XMITCTL1::Register>,
+
+///Transmitter control register 2. I2C address 0x12.
+    pub XMITCTL2: ReadWrite<u8, XMITCTL2::Register>
+}
+
+#[repr(C)]
+#[derive(Default)]
+pub struct RegisterInstance {
+    data: [u8; mem::size_of::<RegisterBlock>()]
+}
+
+impl ops::Deref for RegisterInstance {
+    type Target = RegisterBlock;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            mem::transmute::<&RegisterInstance, &RegisterBlock>(self)
+        }
+    }
 }
 
 
@@ -408,68 +417,32 @@ pub struct RegisterBlock {
 ///
 #[allow(non_snake_case)]
 #[derive(Default)]
-pub struct CS4265 {
-///I2C address of the CS4265 0x00.
-    pub CHIPADDR: u8,
-
-///Chip ID register. I2C address 0x01.
-    pub CHIPID: u8,
-
-// ///Power control register. I2C address 0x02.
-//     POWERCTL: u8,
-// 
-// ///DAC Control register 1. I2C address 0x03.
-//     DACCTL1: u8,
-// 
-// ///ADC Control register. I2C address 0x04.
-//     ADCCTL: u8,
-// 
-// ///MCLK register. I2C address 0x05.
-//     MCLK:  u8,
-// 
-// ///Signal selection register. I2C address 0x06.
-//     SIGSEL:  u8,
-// 
-// ///Programmable gain amplifier Channel B register. I2C address 0x07.
-//     PGAB: u8,
-// 
-// ///Programmable gain amplifier Channel A register. I2C address 0x08.
-//     PGAA:  u8,
-// 
-// ///Analog input control register. I2C address 0x09.
-//     AICTL: u8,
-// 
-// ///DAC volume channel A register. I2C address 0x0A.
-//     DACVOLA:  u8,
-// 
-// ///DAC volume channel B register. I2C address 0x0B.
-//     DACVOLB: u8,
-// 
-// ///DAC Control register 2. I2C address 0x0C.
-//     DACCTL2: u8,
-// 
-// ///Status register. I2C address 0x0D.
-//     STATUS: u8,
-// 
-// ///Status mask register. I2C address 0x0E.
-//     STATUSMASK: u8,
-// 
-// ///Status mode most significant bit register. I2C address 0x0F.
-//     STATUSMODEMSB: u8,
-// 
-// ///Status mode least significant bit register. I2C address 0x10.
-//     STATUSMODELSB: u8,
-// 
-// ///Transmitter control register 1. I2C address 0x11.
-//     XMITCTL1: u8,
-// 
-// ///Transmitter control register 2. I2C address 0x12.
-//     XMITCTL2: u8
+pub struct CS4265<S> {
+    i2c: S,
+    addr: u8,
+    pub reg: RegisterInstance
 }
 
-impl CS4265 {
-    pub fn new() -> CS4265 {
+impl <I> CS4265<I> where
+    I: i2c::I2C + Default
+{
+    pub fn new() -> CS4265<I> {
         CS4265 { ..Default::default() }
+    }
+
+    pub fn rd_reg_status(&mut self) -> Result<(), ERROR> {
+        match self.i2c.read(self.addr,
+                             RegisterAddress::STATUS as u8, 
+                             &mut self.reg.data[1..2])
+        {
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
+        }        
     }
 
 ///
@@ -478,28 +451,28 @@ impl CS4265 {
     pub fn poll_chip_id(&mut self, addr: u8) -> Result<(), ERROR> {
         let mut chipid: [u8;1] = [0];
 
-        match PERIPHERALS.i2c1.read(addr,
-                                    RegisterAddress::CHIPID as u8,
-                                    &mut chipid)
+        match self.i2c.read(addr,
+                            RegisterAddress::CHIPID as u8,
+                            &mut chipid)
         {
             Ok(())   => {
-                self.CHIPID = chipid[0];
+                self.reg.CHIPID.set(chipid[0]);
     
-                if ((self.CHIPID & 0b11110000) >> 4) == 0b1101 {
-                    PERIPHERALS.uart.puts("cs4265.poll_chip_id(): CS4265 Part ID is 0b1101.\r\n");
+                if self.reg.CHIPID.matches_all(CHIPID::PART::ID) {
+                    debug::out("cs4265.poll_chip_id(): Found Part ID 0b1101. Ok.\r\n");
 
-                    match self.CHIPID & 0b00001111 {
+                    match chipid[0] & 0b00001111 {
                         0b0001 => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Part Revision A.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Part Revision A.\r\n");
                         },
                         0b0010 => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Part Revision B or C0.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Part Revision B or C0.\r\n");
                         },
                         0b0011 => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Part Revision C1.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Part Revision C1.\r\n");
                         },
                         _ => {
-                            PERIPHERALS.uart.puts("cs4265.poll_chip_id(): Found Unknown Part Revision.\r\n");
+                            debug::out("cs4265.poll_chip_id(): Found Unknown Part Revision.\r\n");
                         }
                     }
                     Ok(())
@@ -521,32 +494,103 @@ impl CS4265 {
 ///
 /// Poll for cs4265 address and chipid.
 ///
-    pub fn init(&mut self) -> Result<(), ERROR> {
-        PERIPHERALS.uart.puts("cs4265.init(): Trying LOW address...\r\n");
+    pub fn poll(&mut self) -> Result<(), ERROR> {
+        debug::out("cs4265.poll(): Trying LOW address...\r\n");
         match self.poll_chip_id(Address::LOW as u8) {
             Ok(_) => {
-                PERIPHERALS.uart.puts("cs4265.init(): cs4265 found at LOW address.");
-                self.CHIPADDR = Address::LOW as u8;
+                debug::out("cs4265.poll(): cs4265 found at LOW address.\r\n");
+                self.addr = Address::LOW as u8;
                 return Ok(());
-            }
+            },
 
             Err(_) => {
-                PERIPHERALS.uart.puts("cs4265.init(): Poll for LOW address failed.\r\n");
+                debug::out("cs4265.poll(): Poll for LOW address failed.\r\n");
             }
         }
 
-        PERIPHERALS.uart.puts("cs4265.init(): Trying HIGH address...\r\n");
+        debug::out("cs4265.poll(): Trying HIGH address...\r\n");
         match self.poll_chip_id(Address::HIGH as u8) {
             Ok(_) => {
-                PERIPHERALS.uart.puts("cs4265.init(): cs4265 found at HIGH address.\r\n");
-                self.CHIPADDR = Address::HIGH as u8;
+                debug::out("cs4265.poll(): cs4265 found at HIGH address.\r\n");
+                self.addr = Address::HIGH as u8;
                 return Ok(());
-            }
+            },
 
             Err(err) => {
-                PERIPHERALS.uart.puts("cs4265.init(): Poll for HIGH address failed.\r\n");
+                debug::out("cs4265.poll(): Poll for HIGH address failed.\r\n");
                 return Err(err);
             }
         }
+    }
+    
+    pub fn init(&mut self) -> Result<(), ERROR> {
+        debug::out("cs4265.init(): Initializing CS4265.\r\n");
+        if let Err(err) = self.poll() { //Poll address and chip id.
+            return Err(err);
+        }
+        debug::out("cs4265.init(): CS4265 initialized.\r\n");
+        return Ok(());
+    }
+
+///
+///Load the current power control register value into the CS4265.
+///
+    pub fn ld_reg_powerctl(&self) -> Result<(), ERROR> {
+        match self.i2c.write(self.addr,
+                             RegisterAddress::POWERCTL as u8, 
+                             &self.reg.data[12..13])
+        {
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
+        }
+    }
+
+
+///
+///load all the local settings into the CS4265's registers.
+///
+    pub fn ld_regs(&self) -> Result<(), ERROR> {
+//Load settings.
+        match self.i2c.write(self.addr,
+                             RegisterAddress::POWERCTL as u8, 
+                             &self.reg.data[1..])
+        {
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
+        }
+    }
+    
+///
+///Read all the registers from the device and verify they match the state.
+///
+    pub fn verify_regs(&self) -> Result<(), ERROR> {
+        let mut cur: RegisterInstance = RegisterInstance::default();
+
+        if let Err(err) = self.i2c.read(self.addr,
+                                        RegisterAddress::POWERCTL as u8, 
+                                        &mut cur.data[1..])
+        {
+            return Err(ERROR::I2C(err));
+        }
+        
+        for i in 1..cur.data.len() {
+            if self.reg.data[i] != cur.data[i] {
+                debug::out("cs4265.verify(): Got difference!\r\n");
+            } else {
+                debug::out("cs4265.verify(): No difference!\r\n");
+            }
+        }
+
+        return Ok(());
     }
 }

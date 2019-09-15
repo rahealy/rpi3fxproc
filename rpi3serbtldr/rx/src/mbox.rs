@@ -24,7 +24,6 @@
 
 use super::MMIO_BASE;
 use core::ops;
-use cortex_a::asm;
 use register::{
     mmio::{ReadOnly, WriteOnly},
     register_bitfields,
@@ -65,7 +64,6 @@ pub mod channel {
 
 // Tags
 pub mod tag {
-    pub const GETSERIAL: u32 = 0x10004;
     pub const SETCLKRATE: u32 = 0x38002;
     pub const LAST: u32 = 0;
 }
@@ -92,12 +90,6 @@ pub struct Mbox {
     pub buffer: [u32; 36],
 }
 
-impl Default for Mbox {
-    fn default() -> Mbox {
-        Mbox { buffer: [0; 36] }
-    }
-}
-
 /// Deref to RegisterBlock
 ///
 /// Allows writing
@@ -118,7 +110,7 @@ impl ops::Deref for Mbox {
 
 impl Mbox {
     pub fn new() -> Mbox {
-        Mbox::default()
+        Mbox { buffer: [0; 36] }
     }
 
     /// Returns a pointer to the register block
@@ -134,7 +126,7 @@ impl Mbox {
                 break;
             }
 
-            asm::nop();
+            unsafe { asm!("nop" :::: "volatile") };
         }
 
         let buf_ptr = self.buffer.as_ptr() as u32;
@@ -150,7 +142,7 @@ impl Mbox {
                     break;
                 }
 
-                asm::nop();
+                unsafe { asm!("nop" :::: "volatile") };
             }
 
             let resp: u32 = self.READ.get();

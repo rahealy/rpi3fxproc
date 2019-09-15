@@ -23,6 +23,7 @@
  */ 
 
 //FIXME: Not done yet!
+
 use super::MMIO_BASE;
 use register::register_bitfields;
 use register::mmio::ReadWrite;

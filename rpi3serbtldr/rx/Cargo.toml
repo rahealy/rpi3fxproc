@@ -1,0 +1,13 @@
+[package]
+name = "rpi3serbtldr_rx"
+version = "0.1.0"
+authors = ["Richard A. Healy <rahealy@users.noreply.github.com>", "Andre Richter <andre.o.richter@gmail.com>", "bzt (bztsrc@github)"]
+edition = "2018"
+
+[dependencies]
+r0 = "0.2.2"        #To zero out bss
+register = "0.3.2"  #CPU register access.
+
+[package.metadata.cargo-xbuild]
+memcpy = true                    #Build memcpy since we won't be providing our own. 
+sysroot_path = "target/sysroot"  #Build the rust specific libraries for the cross-compiled target here.

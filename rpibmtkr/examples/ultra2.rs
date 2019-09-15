@@ -29,9 +29,14 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use peripherals::PERIPHERALS;
-//use drivers::cs4265;
-use hats::ultra2;
+use peripherals::{
+    debug, 
+    uart::Uart0,
+    i2s::{I2S, I2S0},
+    i2c::{I2C, I2C1},
+    timer::{Timer1}
+};
+use hats::ultra2::Ultra2;
 
 mod startup; //Pull in startup code.
 
@@ -47,21 +52,39 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 
 
 ///
-/// Main loop exercises timers.
+/// Main loop.
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
-    let mut ultra2 = ultra2::Ultra2::new();
+    Uart0::init();
+    debug::init();
+    I2C1::init();
+    I2S0::init();
 
-    PERIPHERALS.init();
-    PERIPHERALS.uart.puts("Ultra2 Example.\r\n");
+    
+//Write a bunch of dots to mark boot.
+    debug::out("\r\n");
+    for _ in 0..72 { debug::out(".") }
+    debug::out("\r\n");
+    
+//Ultra2 uses a cs4265 which relies on i2c bus for control. Use RPi I2C1.
+//CS4265 communicates audio data via i2s. Use RPi I2S0.
+//Various Ultra2 operations requre a delay so use RPi System Timer1
+    let mut u2 = Ultra2::<I2C1, I2S0, Timer1>::default();
 
-    if let Err(err) = ultra2.init() {
-        PERIPHERALS.uart.puts("main(): Error ultra2.init() failed - ");        
-        PERIPHERALS.uart.puts(err.msg());
-        PERIPHERALS.uart.puts("\r\n");
+    if let Err(err) = u2.init() {
+        debug::out("main(): Error ultra2.init() failed - ");     
+        debug::out(err.msg());
+        debug::out("\r\n");
         panic!();
     }
+
+//     if let Err(err) = I2S0::tx_test() {
+//         debug::out("main(): Error tx_test() failed - ");     
+//         debug::out(err.msg());
+//         debug::out("\r\n");
+//         panic!();
+//     }
 
     loop {
     }

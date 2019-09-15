@@ -26,6 +26,10 @@ use super::MMIO_BASE;
 use core::ops;
 use register::register_bitfields;
 use register::mmio::ReadWrite;
+use crate::debug;
+use crate::timer::{Timer, Timer1};
+use crate::gpfsel::GPFSEL;
+use crate::clk::PCMCTL;
 
 
 /**********************************************************************
@@ -37,260 +41,27 @@ use register::mmio::ReadWrite;
 ///
 pub enum ERROR {
 ///
-    TIMEOUT
+    TIMEOUT,
+    SYNC,
+    FLOW
 }
 
 impl ERROR {
     pub fn msg (&self) -> &'static str {
         match self {
-            ERROR::TIMEOUT   => "Unexpected timeout."
+            ERROR::TIMEOUT   => "Unexpected timeout.",
+            ERROR::SYNC      => "Frame is out of sync.",
+            ERROR::FLOW      => "Over/under flow condition."
         }
     }
 }
 
-/**********************************************************************
- * GPIO
- *
- * Reference:
- *  https://github.com/raspberrypi/documentation/files/1888662/BCM2837-ARM-Peripherals.-.Revised.-.V2-1.pdf
- *
- * I2S Pins
- *  RPi I/O Pin 12, BCM GPIO18, Function: PCM_CLK, I2S: BCLK
- *  RPi I/O Pin 35, BCM GPIO19, Function: PCM_FS, I2S: LRCLK
- *  RPi I/O Pin 38, BCM GPIO20, Function: PCM_DIN, I2S: SDIN
- *  RPi I/O Pin 40, BCM GPIO21, Function: PCM_DOUT, I2S: SDOUT
- *
- *********************************************************************/
-
-register_bitfields! {
-    u32,
-
-/// GPIO Function Select 1
-    GPFSEL1 [
-/// I/O Pin 12 (BCLK)
-        FSEL18 OFFSET(24) NUMBITS(3) [
-            PCM_CLK = 0b100 // I2S - Alternate function 0
-        ],
-
-/// I/O Pin 35 (LRCLK)
-        FSEL19 OFFSET(27) NUMBITS(3) [
-            PCM_FS = 0b100 // I2S - Alternate function 0
-        ]
-    ],
-
-/// GPIO Function Select 2
-    GPFSEL2 [
-/// I/O Pin 38 (SDIN)
-        FSEL20 OFFSET(0) NUMBITS(3) [
-            PCM_DIN = 0b100 // I2S - Alternate function 0
-        ],
-
-/// I/O Pin 40 (SDOUT)
-        FSEL21 OFFSET(3) NUMBITS(3) [
-            PCM_DOUT = 0b100 // I2S - Alternate function 0
-        ]
-    ]
-}
-
-///
-///GPFSEL1 alternative function select register - 0x7E200004
-///
-const GPFSEL1_OFFSET: u32 = 0x0020_0004;
-const GPFSEL1_BASE:   u32 = MMIO_BASE + GPFSEL1_OFFSET;
-
-// ///
-// ///GPFSEL2 alternative function select register - 0x7E200008
-// ///
-// const GPFSEL2_OFFSET: u32 = 0x0020_0008;
-// const GPFSEL2_BASE:   u32 = MMIO_BASE + GPFSEL2_OFFSET;
-
-///
-/// GPFSEL peripheral registers
-///
-#[allow(non_snake_case)]
-#[repr(C)]
-pub struct RegisterBlockGPFSEL {
-    GPFSEL1: ReadWrite<u32, GPFSEL1::Register>, // 0x00200004
-    GPFSEL2: ReadWrite<u32, GPFSEL2::Register>  // 0x00200008
-}
-
-///
-/// GPFSEL peripheral registers
-///
-pub struct GPFSEL;
-
-impl ops::Deref for GPFSEL {
-    type Target = RegisterBlockGPFSEL;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*Self::ptr() }
-    }
-}
-
-impl GPFSEL {
-    fn ptr() -> *const RegisterBlockGPFSEL {
-        GPFSEL1_BASE as *const _
-    }
-
-    pub const fn new() -> GPFSEL {
-        GPFSEL
-    }
-
-    pub fn init(&self) {
-        self.GPFSEL1.modify(GPFSEL1::FSEL18::PCM_CLK + 
-                            GPFSEL1::FSEL19::PCM_FS);
-
-        self.GPFSEL2.modify(GPFSEL2::FSEL20::PCM_DIN + 
-                            GPFSEL2::FSEL21::PCM_DOUT);
-    }
-}
-
-
-/**********************************************************************
- * Clock Manager
- *
- * Reference
- *  https://www.scribd.com/doc/127599939/BCM2835-Audio-clocks
- *********************************************************************/
-
-register_bitfields! {
-    u32,
-
-///PCM clock control. 0x7E10_1098
-    CM_PCMCTL [
-///Enter password before changing a value.
-        PASSWD OFFSET(24) NUMBITS(8) [
-            VAL = 0x5A
-        ],
-
-///MASH control
-        MASH OFFSET(9) NUMBITS(2) [
-            INT   = 0b00,   //Integer division
-            ONE   = 0b01,   //One stage MASH
-            TWO   = 0b10,   //Two stage MASH
-            THREE = 0b11    //Three stage MASH
-        ],
-
-///Debug only. Generates edge on clock output.
-        FLIP OFFSET(8) NUMBITS(1) [],
-
-///Clock generator running.
-        BUSY OFFSET(7) NUMBITS(1) [],
-
-///Kill and restart clock generator. Debug only.
-        KILL OFFSET(5) NUMBITS(1) [],
-
-///Enable clock generator. Poll BUSY bit for result.
-        ENAB OFFSET(4) NUMBITS(1) [],
-
-///Clock source.
-        SRC OFFSET(0) NUMBITS(4) [
-            GND        = 0b0000,    //Ground (no clock)
-            OSC        = 0b0001,    //19.2 MHz oscillator
-            TESTDEBUG0 = 0b0010,    //???
-            TESTDEBUG1 = 0b0011,    //???
-            PLLA       = 0b0100,    //Phase locked loop A
-            PLLC       = 0b0101,    //Phase locked loop C
-            PLLD       = 0b0110,    //Phase locked loop D
-            HDMIAUX    = 0b0111     //HDMI Auxillary
-        ]
-    ],
-
-///PCM clock divider. 0x7E10_109C
-    CM_PCMDIV [
-///Enter password before changing a value.
-        PASSWD OFFSET(24) NUMBITS(8) [
-            VAL = 0x5A
-        ],
-
-///Integer part of divisor.
-        DIVI OFFSET(12) NUMBITS(12) [],
-
-///Fractional part of divisor.
-        DIVF OFFSET(0) NUMBITS(12) []
-    ]
-}
-
-
-///
-///PCM (I2C) clock control. 0x7E10_1098
-///
-const CM_PCMCTL_OFFSET: u32 = 0x0010_1098;
-const CM_PCMCTL_BASE:   u32 = MMIO_BASE + CM_PCMCTL_OFFSET; 
-
-///
-///PCM clock divider. 0x7E10_109C
-///
-const CM_PCMDIV_OFFSET: u32 = 0x0010_109C;
-const CM_PCMDIV_BASE:   u32 = MMIO_BASE + CM_PCMDIV_OFFSET; 
-
-
-///Clock manager.
-struct CM;
-
-impl CM {
-    pub const fn new() -> CM {
-        CM
-    }
-    
-    fn ctlptr() -> *const ReadWrite<u32, CM_PCMCTL::Register> {
-        CM_PCMCTL_BASE as *const _
-    }
-
-    fn divptr() -> *const ReadWrite<u32, CM_PCMDIV::Register> {
-        CM_PCMDIV_BASE as *const _
-    }
-
-    fn wait_busy(val: bool) {
-        let ctl = CM::ctlptr();
-        unsafe {
-            while (*ctl).is_set(CM_PCMCTL::BUSY) != val {}
-        }
-    }
-
-///
-///Reference
-/// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
-///
-    pub fn init(&self) {
-        let ctl = CM::ctlptr();
-        let div = CM::divptr();
-
-        unsafe {
-//Clear clock register. Wait until stop.
-            (*ctl).write(CM_PCMCTL::PASSWD::VAL);
-
-            CM::wait_busy(false);
-
-//Set divider based on control values.
-            (*ctl).modify (
-                CM_PCMCTL::PASSWD::VAL + //Password.
-                CM_PCMCTL::MASH::INT   + //MASH set to integer.
-                CM_PCMCTL::SRC::OSC      //Use oscillator for clock source.
-            );
-
-//Set frequency to 19.2 MHz / (10 + (1/4095)) = 1.9199531147 MHz
-            (*div).modify (
-                CM_PCMDIV::PASSWD::VAL  +
-                CM_PCMDIV::DIVI.val(10) + //Integer divisor of 10
-                CM_PCMDIV::DIVF.val(1)    //Fractional divisor of 1/4095
-            );
-
-//Enable.
-            (*ctl).modify (
-                CM_PCMCTL::PASSWD::VAL + //Password.
-                CM_PCMCTL::MASH::INT   + //MASH set to integer.
-                CM_PCMCTL::SRC::OSC    + //Use oscillator for clock source.
-                CM_PCMCTL::ENAB::SET
-            );
-
-            CM::wait_busy(true);
-        }
-    }
-}
 
 /**********************************************************************
  * PCM
+ *
+ * Reference:
+ *  https://github.com/raspberrypi/documentation/files/1888662/BCM2837-ARM-Peripherals.-.Revised.-.V2-1.pdf
  *********************************************************************/
 register_bitfields! {
     u32,
@@ -388,10 +159,7 @@ register_bitfields! {
         ],
 
 ///PDM input mode enable.
-        PDME OFFSET(26) NUMBITS(1) [
-            PCM = 0b0,
-            PDM = 0b1
-        ],
+        PDME OFFSET(26) NUMBITS(1) [],
 
 ///Pack 2x16bit samples into one 32bit FIFO location.
         FRXP OFFSET(25) NUMBITS(1) [],
@@ -611,8 +379,108 @@ pub struct RegisterBlockPCM {
 
 
 ///
+/// PCM Parameters
+///
+#[derive(Default)]
+pub struct Channel {
+    en:  bool, //Channel enable.
+    wid: u32,  //Bit depth.
+    wex: u32,  //Bit extend for >24 bit samples.
+    pos: u32,  //Position in frame.
+}
+
+impl Channel {
+    pub fn enable(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.en = val;
+        new
+    }
+
+    pub fn width(&mut self, val: u32) -> &mut Self {
+        let mut new = self;
+        if val <= 8 {         //8 bit.
+            new.wid = 0x0; 
+        } else if val <= 16 { //16 bit.
+            new.wid = 0x8;
+        } else if val <= 24 { //24 bit.
+            new.wid = 0xF;
+        } else {              //32 bit.
+            new.wex = 1;
+            new.wid = 8;
+        }
+        new
+    }
+
+    pub fn pos(&mut self, val: u32) -> &mut Self {
+        let mut new = self;
+        new.pos = if val > 1023 { 1023 } else { val };
+        new
+    }
+}
+
+#[derive(Default)]
+pub struct Channels {
+    pub ch1: Channel, 
+    pub ch2: Channel
+}
+
+#[derive(Default)]
+pub struct PCMParams {
+    pub rx: Channels,
+    pub tx: Channels,
+    rxon:   bool, //Receieve on.
+    txon:   bool, //Transmit on.
+    fsm:    bool, //Frame master
+    clkm:   bool, //Clock master
+    flen:   u32,  //Length of frame in clocks.
+    fslen:  u32,  //Length of first half of frame in clocks.
+    smplrt: u32   //Sample rate in samples per second.
+}
+
+impl PCMParams {
+    pub fn rxon(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.rxon = val;
+        new
+    }
+
+    pub fn txon(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.txon = val;
+        new
+    }
+
+    pub fn fs_master(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.fsm = val;
+        new
+    }
+
+    pub fn clk_master(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.clkm = val;
+        new
+    }
+
+    pub fn chlen(&mut self, ch1: u32, ch2: u32) -> &mut Self {
+        let mut new = self;
+        new.flen = ch1 + ch2;
+        new.fslen = ch1;
+        new
+    }
+    
+    pub fn smplrt(&mut self, smplrt: u32) -> &mut Self {
+        let mut new = self;
+        new.smplrt = smplrt;
+        new
+    }
+
+}
+
+///
 /// PCM peripheral registers
 ///
+#[derive(Default)]
 pub struct PCM;
 
 impl ops::Deref for PCM {
@@ -628,99 +496,234 @@ impl PCM {
         PCM_BASE as *const _
     }
 
-    pub const fn new() -> PCM {
-        PCM
+///
+///PCM provides a SYNC bit that echoes back the written value after 2 clocks.
+///Return after clks / 2 periods have elapsed. 
+///
+    pub fn sync(&self, clks: usize) {
+        debug::out("pcm.sync(): Start sync.\r\n");
+        for _ in 0..(clks / 2) {
+            self.CS_A.modify (CS_A::SYNC::SET);
+            while !self.CS_A.is_set(CS_A::SYNC) {}
+        }
+        debug::out("pcm.sync(): End sync.\r\n");
     }
 
-    pub fn init(&self) {
+    fn wait_1sec() {
+        Timer1::default().one_shot(1_000_000);
+    }
+
+///
+///Reference
+/// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
+///
+    pub fn load(&self, params: &PCMParams) {
+        
+        let mut rx_nchans: u32 = 0;
+        let mut tx_nchans: u32 = 0;
+        let mut nchans = 0;
+
+        debug::out("pcm.load(): Loading parameters.\r\n");
+
+//Determine number of channels.
+        if params.rx.ch1.en { rx_nchans += 1; }
+        if params.rx.ch2.en { rx_nchans += 1; }
+        if params.tx.ch1.en { tx_nchans += 1; }
+        if params.tx.ch2.en { tx_nchans += 1; }
+
+        if tx_nchans > rx_nchans {
+            nchans = tx_nchans;
+        } else {
+            nchans = rx_nchans;
+        }
+
+//Set up clock.
+        debug::out("pcm.load(): Set up clock.\r\n");
+//FIXME: Do we need a clock in slave mode?
+        PCMCTL::default().i2s_setup(params.smplrt, nchans);
+
 //Reset configuration.
-        self.CS_A.set(0); //FIXME: Need delay?
+        debug::out("pcm.load(): Disable PCM.\r\n");
+        self.CS_A.set(0); //FIXME: Might need to be enabled.
+//        self.CS_A.write( CS_A::EN::SET ); //FIXME: Might need to be disabled.
+        PCM::wait_1sec();
 
 //Clear FIFOs and set thresholds. 
-        self.CS_A.modify(
+        debug::out("pcm.load(): Clear FIFOs.\r\n");
+        self.CS_A.modify (
             CS_A::RXCLR::SET + //Clear RX FIFO
             CS_A::TXCLR::SET + //Clear TX FIFO
             CS_A::RXTHR::C   + //RXR set when FIFO is less than full.
             CS_A::TXTHR::D     //TXW set when FIFO is one sample shy of full.
-        );// FIXME: Need delay?
+        );
+        PCM::wait_1sec();
 
 //Configure receive.
         self.RXC_A.modify (
 //Channel 1
-            RXC_A::CH1WEX::CLEAR    + //24bit >= sample size.
-            RXC_A::CH1EN::SET       + //Enable channel 1.
-            RXC_A::CH1POS.val(1)    + //Channel 1 data on 2nd clock of frame.
-            RXC_A::CH1WID::W16      + //16 bit sample size.
+            RXC_A::CH1WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
+            RXC_A::CH1EN.val(params.rx.ch1.en as u32) + //Enable channel 1.
+            RXC_A::CH1POS.val(params.rx.ch1.pos)      + //0 based index data position in frame.
+            RXC_A::CH1WID.val(params.rx.ch1.wid)      + //Sample width in bits.
 //Channel 2
-            RXC_A::CH2WEX::CLEAR    + //24bit >= sample size.
-            RXC_A::CH2EN::SET       + //Enable channel 2.
-            RXC_A::CH2POS.val(33)   + //Channel 2 data on 33rd clock of frame.
-            RXC_A::CH2WID::W16        //16 bit sample size.
+            RXC_A::CH2WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
+            RXC_A::CH2EN.val(params.rx.ch2.en as u32) + //Enable channel 2.
+            RXC_A::CH2POS.val(params.rx.ch2.pos)      + //0 based index data position in frame.
+            RXC_A::CH2WID.val(params.rx.ch2.wid)        //Sample width in bits.
         );
 
 //Configure transmit.
         self.TXC_A.modify (
 //Channel 1
-            TXC_A::CH1WEX::CLEAR    + //24bit >= sample size.
-            TXC_A::CH1EN::SET       + //Enable channel 1.
-            TXC_A::CH1POS.val(1)    + //Channel 1 data on 2nd clock of frame.
-            TXC_A::CH1WID::W16      + //16 bit sample size.
+            TXC_A::CH1WEX.val(params.tx.ch1.wex)      + //24bit >= sample size.
+            TXC_A::CH1EN.val(params.tx.ch1.en as u32) + //Enable channel 1.
+            TXC_A::CH1POS.val(params.tx.ch1.pos)      + //0 based index data position in frame.
+            TXC_A::CH1WID.val(params.tx.ch1.wid)      + //Sample width in bits.
 //Channel 2
-            TXC_A::CH2WEX::CLEAR    + //24bit >= sample size.
-            TXC_A::CH2EN::SET       + //Enable channel 2.
-            TXC_A::CH2POS.val(33)   + //Channel 2 data on 33rd clock of frame.
-            TXC_A::CH2WID::W16        //16 bit sample size.
+            TXC_A::CH2WEX.val(params.tx.ch2.wex)      + //24bit >= sample size.
+            TXC_A::CH2EN.val(params.tx.ch2.en as u32) + //Enable channel 2.
+            TXC_A::CH2POS.val(params.tx.ch2.pos)      + //0 based index data position in frame.
+            TXC_A::CH2WID.val(params.tx.ch2.wid)        //Sample width in bits.
         );
 
 //Set mode.
         self.MODE_A.modify (
-            MODE_A::CLK_DIS::CLEAR + //Disable PCM clock.
-            MODE_A::PDME::PCM      + //Use PCM (standard) input mode.
-            MODE_A::FRXP::SET      + //Pack 2x16bit samples into one 32bit FIFO location. 
-            MODE_A::FTXP::SET      + //Pack 2x16bit samples into one 32bit FIFO location. 
-            MODE_A::CLKM::MASTER   + //Clock is an output.
-            MODE_A::CLKI::CLEAR    + //No clock inversion.
-            MODE_A::FSM::MASTER    + //Frame select is an output.
-            MODE_A::FSI::CLEAR     + //No frame sync inversion.
-            MODE_A::FLEN.val(63)   + //64 clocks in a frame.
-            MODE_A::FSLEN.val(32)    //32 clocks in first half of frame.
+            MODE_A::CLK_DIS::CLEAR               + //Enable PCM clock.
+            MODE_A::PDME::CLEAR                  + //PDM is for digital microphones. Disable.
+            MODE_A::FRXP::CLEAR                  + //Don't pack 2x16bit samples into one 32bit FIFO location. 
+            MODE_A::FTXP::CLEAR                  + //Don't pack 2x16bit samples into one 32bit FIFO location. 
+            MODE_A::CLKM.val(params.clkm as u32) + //Clock is an output (master) or input (slave).
+            MODE_A::CLKI::CLEAR                  + //No clock inversion.
+            MODE_A::FSM.val(params.fsm as u32)   + //Frame select is an output (master) or input (slave).
+            MODE_A::FSI::CLEAR                   + //No frame sync inversion.
+            MODE_A::FLEN.val(params.flen)        + //Clocks in a L/R frame.
+            MODE_A::FSLEN.val(params.fslen)        //Clocks in first half of frame.
         );
 
 //Exit standby.
         self.CS_A.modify(CS_A::STBY::SET);
-        //FIXME: DELAY 4 PCM Clocks.
+        PCM::wait_1sec();
+
 
 //Enable PCM begin RX & TX.
-        self.CS_A.modify(
-            CS_A::EN::SET   +
-            CS_A::RXON::SET +
-            CS_A::TXON::SET
-        );
+        debug::out("pcm.load(): Enable PCM.\r\n");
+        if params.rx.ch1.en || params.rx.ch2.en {
+            self.CS_A.modify (CS_A::RXON::SET);
+        }
+
+        if params.tx.ch1.en || params.tx.ch2.en {
+            self.CS_A.modify (CS_A::TXON::SET);
+        }
+
+        self.CS_A.modify(CS_A::EN::SET);
+        PCM::wait_1sec();
+        debug::out("pcm.load(): Parameters loaded.\r\n");
     }
+    
+    fn poll_rx_error(&self) -> Result<(), ERROR> {
+        let cs = self.CS_A.extract();
+
+//Under or overflow error.
+        if cs.is_set(CS_A::RXERR) {
+            return Err(ERROR::FLOW);
+        }
+
+//FIFO is in sync with data frame.
+        if cs.is_set(CS_A::RXSYNC) {
+            return Err(ERROR::SYNC);
+        }
+
+        return Ok(());
+    }
+
+    fn poll_tx_error(&self) -> Result<(), ERROR> {
+        let cs = self.CS_A.extract();
+
+//Under or overflow error.
+        if cs.is_set(CS_A::TXERR) {
+            return Err(ERROR::FLOW);
+        }
+
+//FIFO is in sync with data frame.
+        if cs.is_set(CS_A::TXSYNC) {
+            return Err(ERROR::SYNC);
+        }
+        
+        return Ok(());
+    }
+
+///
+///Write square wave to TX.
+///
+///Reference:
+/// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
+///
+    pub fn tx_test(&self) -> Result<(), ERROR> {
+        let mut cnt: u32 = 0;
+        let smplrt:  u32 = 48_000;
+        let freq:    u32 = smplrt / 40;
+        let spc:     u32 = smplrt / freq;     //Samples per cycle
+        let spc2:    u32 = spc / 2;           //Samples per cycle / 2.
+
+        debug::out("pcm.tx_test(): Begin TX test.\r\n");
+
+        while self.CS_A.is_set(CS_A::TXW) {
+            cnt += 1;
+            if cnt > spc { cnt = 1; }
+
+            let out: u32 = if spc2 > cnt { 0x00FFFFFF } else { 0x007FFFFF };
+
+            self.FIFO_A.write ( FIFO_A::DATA.val(out) ); //Ch1
+            self.FIFO_A.write ( FIFO_A::DATA.val(out) ); //Ch2
+        }
+
+        if let Err(err) = self.poll_tx_error() { //Error condition.
+            debug::out("pcm.tx_test(): Error.\r\n");
+            return Err(err);
+        }
+
+        debug::out("pcm.tx_test(): End TX test.\r\n");
+
+        return Ok(());
+    }
+    
 }
 
 /**********************************************************************
  * I2S
  *********************************************************************/
 
-pub struct I2S {
-    gpfsel: GPFSEL, //I2S GPIO selection
-    cm:     CM,     //I2S Clock manager.
-    pcm:    PCM     //I2S PCM control register.
+pub trait I2S {
+    fn init();
+    fn load(&self, params: &PCMParams);
+    fn tx_test() -> Result<(), ERROR>;
 }
 
-impl I2S {
-    pub const fn new() -> I2S {
-        I2S {
-            gpfsel: GPFSEL::new(),
-            cm:     CM::new(),
-            pcm:    PCM::new()
-        }
+/**********************************************************************
+ * I2S0
+ *********************************************************************/
+
+#[derive(Default)]
+pub struct I2S0;
+
+impl I2S for I2S0 {
+    fn init() {
+
+        debug::out("i2s0.init(): Initializing I2S.\r\n");
+
+        GPFSEL::default().fsel_i2s(); //Select the GPIO pins for I2S.
+
+        debug::out("i2s0.init(): I2S initialized.\r\n");
     }
 
-    pub fn init(&self) {
-        self.gpfsel.init();
-        self.cm.init();
-        self.pcm.init();
+///
+///Load parameters.
+///
+    fn load(&self, params: &PCMParams) {
+        PCM::default().load(params);
+    }
+    
+    fn tx_test() -> Result<(), ERROR> {
+        return PCM::default().tx_test();
     }
 }

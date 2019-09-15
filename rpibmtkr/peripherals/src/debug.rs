@@ -23,41 +23,28 @@
  */
 
 use crate::uart;
-use crate::mbox;
-use crate::i2c;
-use crate::timer;
 
-///
-/// All system peripherals represented in a single structure.
-///
-#[repr(C)]
-pub struct Peripherals {
-    pub mbox: mbox::Mbox,
-    pub uart: uart::Uart,
-    pub i2c1: i2c::I2C1,
-    pub timer: timer::Timer
+pub struct Dbg {
+    uart: uart::Uart0
 }
 
-impl Peripherals {
-    pub const fn new() -> Peripherals {
-        Peripherals {
-            mbox: mbox::Mbox::new(),
-            uart: uart::Uart::new(),
-            i2c1: i2c::I2C1::new(),
-            timer: timer::Timer::new()
-        }
-    }
-
-    pub fn init(&mut self) {
-        if self.uart.init(&mut self.mbox).is_err() {
-            panic!();
-        }
-        for _ in 0..70 { self.uart.puts("."); }
-        self.uart.puts("\r\n");
-        self.uart.puts("UART Initialized.\r\n");
-        self.i2c1.init();
-        self.uart.puts("I2C Initialized.\r\n");
-        self.timer.init();
-        self.uart.puts("Timer Initialized.\r\n");
+pub fn init() {
+    unsafe {
+        DBG = Some(
+            Dbg {
+                uart: uart::Uart0
+            }
+        );
     }
 }
+
+pub fn out(val: &str) {
+    unsafe {
+        match &mut DBG {
+            Some(dbg) => dbg.uart.puts(val),
+            None => {}
+        }
+    }
+}
+
+pub static mut DBG: Option<Dbg> = None;

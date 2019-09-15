@@ -23,7 +23,6 @@
  */ 
 
 use super::MMIO_BASE;
-use super::TIMER_MIN_RESOLUTION_MSECS;
 use register::register_bitfields;
 use register::mmio::ReadWrite;
 use core::ops;
@@ -91,21 +90,6 @@ pub struct RegisterBlock {
     C3:     ReadWrite<u32, C3::Register>
 }
 
-pub enum ERROR {
-    RESOLUTION,
-    INVALID,
-    RESERVED
-}
-
-impl ERROR {
-    pub fn msg (&self) -> &'static str {
-        match self {
-            ERROR::RESOLUTION   => "Time value beneath useful timer resolution.",
-            ERROR::INVALID      => "Timer doesn't exist.",
-            ERROR::RESERVED     => "Timer reserved by GPU and not available."
-        }
-    }
-}
 
 ///
 ///Timer offset. 0x7E003000.
@@ -113,9 +97,20 @@ impl ERROR {
 const TIMER_OFFSET:  u32 = 0x0000_3000;
 const TIMER_BASE:    u32 = MMIO_BASE + TIMER_OFFSET; 
 
-pub struct Timer;
+pub trait Timer {
+    fn ptr() -> *const RegisterBlock;
+    fn init(&self) {}
+    fn one_shot(&self, msecs: u32);
+}
 
-impl ops::Deref for Timer {
+/**********************************************************************
+ * Timer1
+ *********************************************************************/
+
+#[derive(Default)]
+pub struct Timer1;
+
+impl ops::Deref for Timer1 {
     type Target = RegisterBlock;
 
     fn deref(&self) -> &Self::Target {
@@ -123,51 +118,51 @@ impl ops::Deref for Timer {
     }
 }
 
-impl Timer {
+impl Timer for Timer1 {
     fn ptr() -> *const RegisterBlock {
         TIMER_BASE as *const _
     }
-
-    pub const fn new() -> Timer {
-        Timer
-    }
-
-    pub fn init(&self) {
-        
-    }
-
 
 ///
 /// Use a single timer t to delay a number of ticks. Returns after number of 
 /// ticks have elapsed. Assumes no IRQ is set. Timer is 1MHz so tick is 1ms.
 ///
-    pub fn one_shot(&self, t: u32, msecs: u32) -> Result<(), ERROR> {
-        if msecs < TIMER_MIN_RESOLUTION_MSECS {
-            return Err(ERROR::RESOLUTION);
-        }
+    fn one_shot(&self, msecs: u32) {
+        let tval = self.CLO.get() + msecs; 
+        self.C1.set(tval);
+        self.CS.modify(CS::M1::SET);
+        while !(self.CS.is_set(CS::M1)) {}
+    }
+}
 
-        let tval = self.CLO.get() + msecs;
- 
-        match t {
-            0 => { return Err(ERROR::RESERVED); },
+/**********************************************************************
+ * Timer3
+ *********************************************************************/
 
-            1 => {
-                self.C1.set(tval);
-                self.CS.modify(CS::M1::SET);
-                while !(self.CS.is_set(CS::M1)) {}
-            },
+#[derive(Default)]
+pub struct Timer3;
 
-            2 => { return Err(ERROR::RESERVED); },
+impl ops::Deref for Timer3 {
+    type Target = RegisterBlock;
 
-            3 => { 
-                self.C3.set(tval);
-                self.CS.modify(CS::M3::SET);
-                while !(self.CS.is_set(CS::M3)) {}
-            },
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*Self::ptr() }
+    }
+}
 
-            _ => { return Err(ERROR::INVALID); }
-        }
+impl Timer for Timer3 {
+    fn ptr() -> *const RegisterBlock {
+        TIMER_BASE as *const _
+    }
 
-        return Ok(());
+///
+/// Use a single timer t to delay a number of ticks. Returns after number of 
+/// ticks have elapsed. Assumes no IRQ is set. Timer is 1MHz so tick is 1ms.
+///
+    fn one_shot(&self, msecs: u32) {
+        let tval = self.CLO.get() + msecs; 
+        self.C3.set(tval);
+        self.CS.modify(CS::M3::SET);
+        while !(self.CS.is_set(CS::M3)) {}
     }
 }
