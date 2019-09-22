@@ -87,12 +87,21 @@ impl PCMDIV {
 ///
 /// Set 12 bit integer and fractional values of divider.
 ///
-    fn set(&self, i: u32, f: u32) {
+    fn set(&self, fsck: u32) {
         self.write(CM_PCMDIV::PASSWD::VAL);
         self.write (
-            CM_PCMDIV::PASSWD::VAL  +
-            CM_PCMDIV::DIVI.val(i) + //Integer divisor of 10
-            CM_PCMDIV::DIVF.val(f)   //Fractional divisor of 1/4095
+            CM_PCMDIV::PASSWD::VAL +
+            CM_PCMDIV::DIVI.val(19_200_000 / fsck) +                 //Integer divisor of 10
+            CM_PCMDIV::DIVF.val((4095 * (19_200_000 % fsck)) / fsck) //Fractional divisor of 1/4095
+        );
+    }
+    
+    fn clear(&self) {
+        self.write(CM_PCMDIV::PASSWD::VAL);
+        self.write (
+            CM_PCMDIV::PASSWD::VAL +
+            CM_PCMDIV::DIVI.val(0) +                 //Integer divisor of 10
+            CM_PCMDIV::DIVF.val(0) //Fractional divisor of 1/4095
         );
     }
 }
@@ -179,45 +188,58 @@ impl PCMCTL {
     }
 
 ///
+/// I2S SCK frequency 'fsck' = SampleRate x BitsPerChannel x numberOfChannels
+///
 ///Reference
 /// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
 ///
-    pub fn i2s_setup(&self, smplrt: u32, numch: u32) {
-        debug::out("PCMCTL.i2s_setup(): FIXME: Setting up PCM clock for i2s operation not implemented.\r\n");
-//         debug::out("pcmctl.i2s(): Setting up PCM clock for i2s operation.\r\n");
-// 
-// //Disable clock.
-//         debug::out("pcmctl.i2s(): Disabling clock.\r\n");
-//         self.modify (
-//             CM_PCMCTL::PASSWD::VAL +
-//             CM_PCMCTL::ENAB::CLEAR
-//         );
-//         self.wait_busy(false);
-// 
-// //Set the PCM control registers.
-//         debug::out("pcmctl.i2s(): Configuring clock.\r\n");
-//         self.modify (
-//             CM_PCMCTL::PASSWD::VAL +
-//             CM_PCMCTL::MASH::INT + //MASH set to integer.
-//             CM_PCMCTL::SRC::OSC    //Use oscillator for clock source.
-//         );
-// 
-// //Clock frequency is sample rate x 
-// //Set divider frequency to 19.2 MHz / (10 + (1/4095)) = 1.9199531147 MHz
-//         debug::out("pcmctl.i2s(): Setting clock divider.\r\n");
-//         PCMDIV::default().set(10, 1);
-//         Timer1::default().one_shot(1_000_000);
-// 
-// //Keep the control values used to set divider and enable. Wait until started.
-//         debug::out("pcmctl.i2s(): Enabling clock.\r\n");
-//         self.modify (
-//             CM_PCMCTL::PASSWD::VAL +
-//             CM_PCMCTL::MASH::INT   + //MASH set to integer.
-//             CM_PCMCTL::SRC::OSC    + //Use oscillator for clock source.
-//             CM_PCMCTL::ENAB::SET
-//         );
-// 
-//         self.wait_busy(true);
-//         debug::out("pcmctl.i2s(): PCM setup for i2s operation complete.\r\n");
+    pub fn i2s_enable(&self, fsck: u32) {
+        debug::out("pcmctl.i2s_enable(): Setting up PCM clock for i2s operation.\r\n");
+
+//Disable clock.
+        debug::out("pcmctl.i2s_enable(): Disabling clock.\r\n");
+        self.modify (
+            CM_PCMCTL::PASSWD::VAL +
+            CM_PCMCTL::ENAB::CLEAR
+        );
+        self.wait_busy(false);
+
+//Set the PCM control registers.
+        debug::out("pcmctl.i2s_enable(): Configuring clock.\r\n");
+        self.modify (
+            CM_PCMCTL::PASSWD::VAL +
+            CM_PCMCTL::MASH::INT + //MASH set to integer.
+            CM_PCMCTL::SRC::OSC    //Use oscillator for clock source.
+        );
+
+//Oscillator clock source is fixed at 19200000Hz.
+        debug::out("pcmctl.i2s_enable(): Setting clock divider.\r\n");
+        PCMDIV::default().set(fsck);
+
+//Keep the control values used to set divider and enable. Wait until started.
+        debug::out("pcmctl.i2s_enable(): Enabling clock.\r\n");
+        self.modify (
+            CM_PCMCTL::PASSWD::VAL +
+            CM_PCMCTL::MASH::INT   + //MASH set to integer.
+            CM_PCMCTL::SRC::OSC    + //Use oscillator for clock source.
+            CM_PCMCTL::ENAB::SET
+        );
+
+        self.wait_busy(true);
+        debug::out("pcmctl.i2s_enable(): PCM setup for i2s operation complete.\r\n");
     }
+
+    pub fn i2s_disable(&self) {
+        debug::out("pcmctl.i2s_disable(): Disabling clock.\r\n");
+        self.modify (
+            CM_PCMCTL::PASSWD::VAL +
+            CM_PCMCTL::ENAB::CLEAR
+        );
+        self.wait_busy(false);
+
+        debug::out("pcmctl.i2s_disable(): Clearing clock divider.\r\n");
+        PCMDIV::default().clear();
+        debug::out("pcmctl.i2s_disable(): PCM disable for i2s operation complete.\r\n");
+    }
+
 }

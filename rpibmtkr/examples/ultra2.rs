@@ -70,21 +70,18 @@ fn main() -> ! {
 //Ultra2 uses a cs4265 which relies on i2c bus for control. Use RPi I2C1.
 //CS4265 communicates audio data via i2s. Use RPi I2S0.
 //Various Ultra2 operations requre a delay so use RPi System Timer1
-    let mut u2 = Ultra2::<I2C1, I2S0, Timer1>::default();
+    let mut ultra2 = Ultra2::<I2C1, I2S0, Timer1>::default();
 
-    if let Err(err) = u2.init() {
+    if let Err(err) = ultra2.init() {
         debug::out("main(): Error ultra2.init() failed - ");     
         debug::out(err.msg());
         debug::out("\r\n");
         panic!();
     }
 
-//     if let Err(err) = I2S0::tx_test() {
-//         debug::out("main(): Error tx_test() failed - ");     
-//         debug::out(err.msg());
-//         debug::out("\r\n");
-//         panic!();
-//     }
+//    I2S0::default().write_test_pattern();
+//    I2S0::default().enable_tx(true);
+//    I2S0::default().write_test_pattern2();
 
     loop {
     }

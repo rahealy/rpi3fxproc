@@ -47,4 +47,38 @@ pub fn out(val: &str) {
     }
 }
 
+pub fn u8bits(val: u8) {
+    unsafe {
+        match &mut DBG {
+            Some(dbg) => {
+                for i in 0..8 {
+                    if ((1 << i) & val) > 0 {
+                        dbg.uart.send('1');
+                    } else {
+                        dbg.uart.send('0');
+                    }
+                }
+            }
+            None => {}
+        }
+    }    
+}
+
+pub fn u32bits(val: u32) {
+    unsafe {
+        match &mut DBG {
+            Some(dbg) => {
+                for i in 0..32 {
+                    if ((1 << i) & val) > 0 {
+                        dbg.uart.send('1');
+                    } else {
+                        dbg.uart.send('0');
+                    }
+                }
+            }
+            None => {}
+        }
+    }    
+}
+
 pub static mut DBG: Option<Dbg> = None;

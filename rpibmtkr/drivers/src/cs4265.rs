@@ -41,14 +41,16 @@ use core::ops;
 
 pub enum ERROR {
     I2C(i2c::ERROR),
-    WRONGID
+    WRONGID,
+    STATUS(&'static str)
 }
 
 impl ERROR {
     pub fn msg (&self) -> &'static str {
         match self {
             ERROR::I2C(err) => err.msg(),
-            ERROR::WRONGID => "Device returned the wrong chip ID."
+            ERROR::WRONGID => "Device returned the wrong chip ID.",
+            ERROR::STATUS(err) => err
         }
     }
 }
@@ -288,6 +290,7 @@ pub enum Address {
 
 #[allow(non_snake_case)]
 #[repr(u8)]
+#[derive(Copy,Clone)]
 pub enum RegisterAddress {
 ///Chip ID register. I2C address 0x01.
     CHIPID = 0x01,
@@ -430,19 +433,23 @@ impl <I> CS4265<I> where
         CS4265 { ..Default::default() }
     }
 
-    pub fn rd_reg_status(&mut self) -> Result<(), ERROR> {
-        match self.i2c.read(self.addr,
-                             RegisterAddress::STATUS as u8, 
-                             &mut self.reg.data[1..2])
+    pub fn poll_status(&mut self) -> Result<(), ERROR> {
+        if let Err(err) = self.i2c.read(self.addr,
+                                        RegisterAddress::STATUS as u8, 
+                                        &mut self.reg.data[1..2])
         {
-            Ok(_) => {
-                return Ok(());
-            },
-
-            Err(err) => {
-                return Err(ERROR::I2C(err));
-            }
-        }        
+            Err(ERROR::I2C(err))        
+        } else if self.reg.STATUS.is_set(STATUS::EFTC) {
+            Err(ERROR::STATUS("Completion of an E to F C-Buffer translation."))
+        } else if self.reg.STATUS.is_set(STATUS::CLKERR) {
+            Err(ERROR::STATUS("Clock error."))
+        }else if self.reg.STATUS.is_set(STATUS::ADCOVFL) {
+            Err(ERROR::STATUS("ADC overflow condition."))
+        } else if self.reg.STATUS.is_set(STATUS::ADCUNDRFL) {
+            Err(ERROR::STATUS("ADC underflow condition."))
+        } else {
+            Ok(())
+        }
     }
 
 ///
@@ -522,7 +529,7 @@ impl <I> CS4265<I> where
             }
         }
     }
-    
+
     pub fn init(&mut self) -> Result<(), ERROR> {
         debug::out("cs4265.init(): Initializing CS4265.\r\n");
         if let Err(err) = self.poll() { //Poll address and chip id.
@@ -533,12 +540,13 @@ impl <I> CS4265<I> where
     }
 
 ///
-///Load the current power control register value into the CS4265.
+///Load the register value into the CS4265.
 ///
-    pub fn ld_reg_powerctl(&self) -> Result<(), ERROR> {
-        match self.i2c.write(self.addr,
-                             RegisterAddress::POWERCTL as u8, 
-                             &self.reg.data[12..13])
+    pub fn ld_reg(&self, ra: RegisterAddress) -> Result<(), ERROR> {
+
+        match self.i2c.write(self.addr, 
+                             ra as u8,
+                             &self.reg.data[(ra as usize) - 1..ra as usize]) 
         {
             Ok(_) => {
                 return Ok(());
@@ -558,7 +566,7 @@ impl <I> CS4265<I> where
 //Load settings.
         match self.i2c.write(self.addr,
                              RegisterAddress::POWERCTL as u8, 
-                             &self.reg.data[1..])
+                             &self.reg.data[(RegisterAddress::POWERCTL as usize) - 1..])
         {
             Ok(_) => {
                 return Ok(());
@@ -578,16 +586,20 @@ impl <I> CS4265<I> where
 
         if let Err(err) = self.i2c.read(self.addr,
                                         RegisterAddress::POWERCTL as u8, 
-                                        &mut cur.data[1..])
+                                        &mut cur.data[(RegisterAddress::POWERCTL as usize) - 1..])
         {
             return Err(ERROR::I2C(err));
         }
         
         for i in 1..cur.data.len() {
             if self.reg.data[i] != cur.data[i] {
-                debug::out("cs4265.verify(): Got difference!\r\n");
+                debug::out("cs4265.verify(): Got difference: Expected / Got \r\n");
+                debug::u8bits(self.reg.data[i]);
+                debug::out("/");
+                debug::u8bits(cur.data[i]);
+                debug::out("\r\n");
             } else {
-                debug::out("cs4265.verify(): No difference!\r\n");
+                debug::out("cs4265.verify(): No difference.\r\n");
             }
         }
 
