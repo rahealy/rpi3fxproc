@@ -120,12 +120,11 @@ register_bitfields! {
 
 ///Threshold determines when the TXW flag is set.
         TXTHR OFFSET(5) NUMBITS(2) [
-            A  = 0b00, //FIXME: BCM Documentation unclear.
-            B  = 0b01, //FIXME: BCM Documentation unclear.
-            C  = 0b10, //FIXME: BCM Documentation unclear.
-            D  = 0b11  //FIXME: BCM Documentation unclear.            
+            A  = 0b00, //FIXME: BCM Documentation unclear. Under 02 samples.
+            B  = 0b01, //FIXME: BCM Documentation unclear. Under 17 samples.
+            C  = 0b10, //FIXME: BCM Documentation unclear. Under 49 samples.
+            D  = 0b11  //FIXME: BCM Documentation unclear. Under 64 samples.
         ],
-
 ///Clear the RX FIFO. Takes 2 PCM Clocks.
         RXCLR OFFSET(4) NUMBITS(1) [],
 
@@ -139,7 +138,7 @@ register_bitfields! {
         RXON OFFSET(1) NUMBITS(1) [],
 
 ///Enable PCM interface.
-        EN OFFSET(1) NUMBITS(1) []
+        EN OFFSET(0) NUMBITS(1) []
     ],
 
 ///FIFO Buffer. Offset 0x4.
@@ -430,21 +429,9 @@ impl Channels {
     }
 
     fn nbits(&self) -> u32 {
-        if self.ch1.en {
-            if self.ch2.en {               
-                if self.ch1.wid > self.ch2.wid {
-                    self.ch1.wid
-                } else {
-                    self.ch2.wid
-                }
-            } else {
-                self.ch1.wid
-            }
-        } else if self.ch2.en {
-            self.ch2.wid
-        } else {
-            0
-        }
+        let wid1: u32 = if self.ch1.en { self.ch1.wid } else { 0 };
+        let wid2: u32 = if self.ch2.en { self.ch2.wid } else { 0 };
+        if wid1 > wid2 { wid1 } else { wid2 }
     }
 }
 
@@ -476,13 +463,13 @@ impl PCMParams {
 
     pub fn fs_master(&mut self, val: bool) -> &mut Self {
         let mut new = self;
-        new.fsm = !val;
+        new.fsm = val;
         new
     }
 
     pub fn clk_master(&mut self, val: bool) -> &mut Self {
         let mut new = self;
-        new.clkm = !val;
+        new.clkm = val;
         new
     }
 
@@ -500,19 +487,15 @@ impl PCMParams {
     }
     
     fn nchans(&self) -> u32 {
-        if self.rx.nchans() > self.tx.nchans() {
-            self.rx.nchans()
-        } else {
-            self.tx.nchans()
-        }
+        let rx = self.rx.nchans();
+        let tx = self.tx.nchans();
+        if rx > tx { rx } else { tx }
     }
 
     fn nbits(&self) -> u32 {
-        if self.rx.nbits() > self.tx.nbits() {
-            self.rx.nbits()
-        } else {
-            self.tx.nbits()
-        }
+        let rx = self.rx.nbits();
+        let tx = self.tx.nbits();
+        if rx > tx { rx } else { tx }
     }
 }
 
@@ -554,13 +537,19 @@ impl PCM {
     }
 
 ///
+///Load the provided configuration.
+///
+/// Sets and enables the PCM clock.
+/// Sets and enables the PCM module.
+/// Both tx and rx are off and must be turned on with calls to [tx,rx]_on(true). 
+///
 ///Reference
 /// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
 ///
     pub fn load(&self, params: &PCMParams) {
         debug::out("pcm.load(): Loading parameters.\r\n");
 
-//Disable PCM.
+//Disable PCM and clear CS_A register.
         debug::out("pcm.load(): Disable PCM.\r\n");
         self.CS_A.set(0);
         PCM::wait_1sec();
@@ -568,14 +557,14 @@ impl PCM {
         
 //Set clock speed.
         if params.clkm | params.fsm {
-            debug::out("pcm.load(): Master. Set PCM clock speed.\r\n"); // 2_304_000
+            debug::out("pcm.load(): Master. Set PCM clock speed.\r\n");
             PCMCTL::default().i2s_enable (params.smplrt * params.nbits() * params.nchans());
         } else {
-            debug::out("pcm.load(): Slave. No clock necessary.\r\n"); // 2_304_000
-            PCMCTL::default().i2s_disable();            
+            debug::out("pcm.load(): Slave. No clock necessary.\r\n");
+            PCMCTL::default().i2s_disable();
         }
 
-//Reset configuration.
+//Enable PCM.
         debug::out("pcm.load(): Enable PCM.\r\n");
         self.CS_A.write( CS_A::EN::SET );
         PCM::wait_1sec();
@@ -615,9 +604,9 @@ impl PCM {
             MODE_A::PDME::CLEAR                     + //PDM is for digital microphones. Disable.
             MODE_A::FRXP::CLEAR                     + //Don't pack 2x16bit samples into one 32bit FIFO location. 
             MODE_A::FTXP::CLEAR                     + //Don't pack 2x16bit samples into one 32bit FIFO location. 
-            MODE_A::CLKM.val(params.clkm as u32)    + //Clock is an output (master) or input (slave).
+            MODE_A::CLKM.val(!params.clkm as u32)   + //Clock is an output (master) or input (slave).
             MODE_A::CLKI::CLEAR                     + //No clock inversion.
-            MODE_A::FSM.val(params.fsm as u32)      + //Frame select is an output (master) or input (slave).
+            MODE_A::FSM.val(!params.fsm as u32)     + //Frame select is an output (master) or input (slave).
             MODE_A::FSI::CLEAR                      + //No frame sync inversion.
             MODE_A::FLEN.val(params.flen)           + //Clocks in a L/R frame.
             MODE_A::FSLEN.val(params.fslen)           //Clocks in first half of frame.
@@ -633,36 +622,37 @@ impl PCM {
 
 //Set thresholds.
         debug::out("pcm.load(): Set FIFO thresholds.\r\n");
-//         self.CS_A.modify (
-//             CS_A::RXTHR::C   + //RXR set when FIFO is less than full.
-//             CS_A::TXTHR::D     //TXW set when FIFO is one sample shy of full.
-//         );
+        self.CS_A.modify (
+            CS_A::RXTHR::D   + //RXR set when FIFO is less than full.
+            CS_A::TXTHR::D     //TXW set when FIFO is one sample shy of full.
+        );
         PCM::wait_1sec();
 
 //Exit standby.
-        debug::out("pcm.load(): Exit standby.\r\n");
+        debug::out("pcm.load(): Exit RAM standby.\r\n");
         self.CS_A.modify(CS_A::STBY::SET);
         PCM::wait_1sec();
 
         debug::out("pcm.load(): Parameters loaded.\r\n");
     }
 
-    fn enable_tx(&self, en: bool) {
-        if en {
-            debug::out("enable_tx(): Enabling PCM transmit (TX).\r\n");
+    fn tx_on(&self, val: bool) {
+        if val {
+            debug::out("pcm.tx_on(): Enabling PCM transmit (TX).\r\n");
             self.CS_A.modify (CS_A::TXON::SET);
         } else {
-            debug::out("enable_tx(): Disabling PCM transmit (TX).\r\n");
+            debug::out("pcm.tx_on(): Disabling PCM transmit (TX).\r\n");
             self.CS_A.modify (CS_A::TXON::CLEAR);
         }
+        PCM::wait_1sec();
     }
 
-    fn enable_rx(&self, en: bool) {
-        if en {
-            debug::out("enable_tx(): Enabling PCM receive (RX).\r\n");
+    fn rx_on(&self, val: bool) {
+        if val {
+            debug::out("pcm.enable_rx(): Enabling PCM receive (RX).\r\n");
             self.CS_A.modify (CS_A::RXON::SET);
         } else {
-            debug::out("enable_tx(): Disabling PCM receive (RX).\r\n");
+            debug::out("pcm.enable_rx(): Disabling PCM receive (RX).\r\n");
             self.CS_A.modify (CS_A::RXON::CLEAR);
         }
     }
@@ -683,16 +673,33 @@ impl PCM {
         return Ok(());
     }
 
-    fn poll_int_status(&self) {
+///
+///Write the interupt status register contents to debug.
+///
+    fn print_int_status(&self) {
         let intstc = self.INTSTC_A.extract();
+        debug::out("          10987654321098765432109876543210\r\n");
+        debug::out("INTSTC_A: ");
+        debug::u32bits(intstc.get());
+        debug::out("\r\n");
+
         debug::out( if intstc.is_set(INTSTC_A::RXR)    { "IRXR = 1\r\n" } else { "IRXR = 0\r\n" } );
         debug::out( if intstc.is_set(INTSTC_A::TXW)    { "ITXW = 1\r\n" } else { "ITXW = 0\r\n" } );
         debug::out( if intstc.is_set(INTSTC_A::RXERR)  { "IRXERR = 1\r\n" } else { "IRXERR = 0\r\n" } );
         debug::out( if intstc.is_set(INTSTC_A::TXERR)  { "ITXERR = 1\r\n" } else { "ITXERR = 0\r\n" } );
     }
 
-    fn poll_status(&self) {
+///
+///Write the status bits to debug.
+///
+    fn print_status(&self) {
         let cs = self.CS_A.extract();
+
+        debug::out("      10987654321098765432109876543210\r\n");
+        debug::out("CS_A: ");
+        debug::u32bits(cs.get());
+        debug::out("\r\n");
+
         debug::out( if cs.is_set(CS_A::RXF)    { "RXF = 1\r\n" } else { "RXF = 0\r\n" } );
         debug::out( if cs.is_set(CS_A::TXE)    { "TXE = 1\r\n" } else { "TXE = 0\r\n" } );
         debug::out( if cs.is_set(CS_A::RXD)    { "RXD = 1\r\n" } else { "RXD = 0\r\n" } );
@@ -706,35 +713,59 @@ impl PCM {
     }
 
 ///
-///Write square wave to TX.
+///Write value to FIFO until FIFO is full.
 ///
 ///Reference:
 /// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
 ///
-    pub fn write_test_pattern(&self) {
-        debug::out("pcm.write_test_pattern(): Writing 0xFAFAFAFA.\r\n");
-        for _ in 0..4 {
-            self.FIFO_A.write ( FIFO_A::DATA.val(0x00FAFAFA) );
-            self.poll_status();
-            self.poll_int_status();
+    pub fn tx_fill(&self, val: u32) {
+        debug::out("pcm.tx_fill(): Begin.\r\n");
+        let mut i: u32 = 0;
+        while self.CS_A.is_set(CS_A::TXW) {
+            if self.CS_A.is_set(CS_A::TXERR) {
+                self.CS_A.modify(CS_A::TXERR::SET);
+            }
+            self.FIFO_A.write ( FIFO_A::DATA.val(val) );
+            i += 1;
+            if i > 1000 {
+                debug::out("pcm.tx_fill(): Timeout.\r\n");
+                return;
+            }
         }
-        debug::out("pcm.write_test_pattern(): Wrote 0x00FAFAFA.\r\n");
+        debug::u32bits(i);
+        debug::out("\r\n");
+        debug::out("pcm.tx_fill(): End.\r\n");
     }
 
-    pub fn write_val(&self, val: u32, num: usize) {
-        debug::out("pcm.write_val(): Begin.\r\n");
-        let i = num;
+///
+///Write value to FIFO num times.
+///
+    pub fn tx_write_val(&self, val: u32, num: usize) -> u32 {
+//        debug::out("pcm.write_val(): Begin.\r\n");
+        if num > 0 {
+            let mut e = 0;
+            let mut i = num;
+//            self.print_status();
 
-        while i > 0 {
-            while self.CS_A.is_set(CS_A::TXD) {
-                self.FIFO_A.write ( FIFO_A::DATA.val(val) );
-                --i;
-                if i < 1 {
-                    debug::out("pcm.write_val(): Done.\r\n");
-                    return;
+            loop {
+                while self.CS_A.is_set(CS_A::TXD) {
+                    if self.CS_A.is_set(CS_A::TXERR) {
+                        e += 1;
+                        self.CS_A.modify(CS_A::TXERR::SET);
+                    }
+
+                    self.FIFO_A.write ( FIFO_A::DATA.val(val) );
+                    i -= 1;
+                    if i > 0 {
+                        continue;
+                    } else {
+                        return e;
+                    }
                 }
             }
         }
+
+        return 0xFFFFFFFF;
     }
 }
 
@@ -745,11 +776,11 @@ impl PCM {
 pub trait I2S {
     fn init();
     fn load(&self, params: &PCMParams);
-    fn poll_status(&self);
-    fn enable_tx(&self, en: bool);
-    fn enable_rx(&self, en: bool);
-    fn write_test_pattern(&self);
-    fn write_test_pattern2(&self);
+    fn print_status(&self);
+    fn tx_on(&self, val: bool);
+    fn rx_on(&self, val: bool);
+    fn tx_fill(&self, val: u32);
+    fn tx_write_val(&self, val: u32, num: usize) -> u32;
 }
 
 /**********************************************************************
@@ -763,7 +794,6 @@ impl I2S for I2S0 {
     fn init() {
         debug::out("i2s0.init(): Initializing I2S.\r\n");
         GPFSEL::default().fsel_i2s();  //Select the GPIO pins for I2S.
- //       PCMCTL::default().i2s_enable( 48000 * 24 * 2 ); //Start the clock to default speed.
         debug::out("i2s0.init(): I2S initialized.\r\n");
     }
 
@@ -774,23 +804,23 @@ impl I2S for I2S0 {
         PCM::default().load(params);
     }
     
-    fn poll_status(&self) {
-        PCM::default().poll_status();
+    fn print_status(&self) {
+        PCM::default().print_status();
     }
     
-    fn enable_tx(&self, en: bool) {
-        PCM::default().enable_tx(en);
+    fn tx_on(&self, val: bool) {
+        PCM::default().tx_on(val);
     }
     
-    fn enable_rx(&self, en: bool) {
-        PCM::default().enable_rx(en);
+    fn rx_on(&self, val: bool) {
+        PCM::default().rx_on(val);
     }
 
-    fn write_test_pattern(&self) {
-        PCM::default().write_test_pattern();
+    fn tx_fill(&self, val: u32) {
+        PCM::default().tx_fill(val);
     }
 
-    fn write_test_pattern2(&self) {
-        PCM::default().write_test_pattern2();
+    fn tx_write_val(&self, val: u32, num: usize) -> u32 {
+        return PCM::default().tx_write_val(val,num);
     }
 }

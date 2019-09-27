@@ -42,7 +42,8 @@ use core::ops;
 pub enum ERROR {
     I2C(i2c::ERROR),
     WRONGID,
-    STATUS(&'static str)
+    STATUS(&'static str),
+    RANGE,
 }
 
 impl ERROR {
@@ -50,7 +51,8 @@ impl ERROR {
         match self {
             ERROR::I2C(err) => err.msg(),
             ERROR::WRONGID => "Device returned the wrong chip ID.",
-            ERROR::STATUS(err) => err
+            ERROR::STATUS(err) => err,
+            ERROR::RANGE => "Argument is out of accepted range."
         }
     }
 }
@@ -153,10 +155,12 @@ register_bitfields! {
 ///Digital loopback.
         LOOP OFFSET(1) NUMBITS(1) []
     ],
-///Programmable gain amplifier Channel B register. I2C address 0x07.
+///Programmable gain amplifier Channel B register. -12dB..12dB. I2C address 0x07.
     PGAB [
-///Gain
-        GAIN OFFSET(0) NUMBITS(6) []
+///Set this bit for 1/2 dB.
+        HALF OFFSET(0) NUMBITS(1) [],
+///Two's complement -12dB..12dB.
+        WHOLE OFFSET(1) NUMBITS(5) []
     ],
 ///Programmable gain amplifier Channel A register. I2C address 0x08.
     PGAA [
@@ -429,33 +433,218 @@ pub struct CS4265<S> {
 impl <I> CS4265<I> where
     I: i2c::I2C + Default
 {
-    pub fn new() -> CS4265<I> {
-        CS4265 { ..Default::default() }
+    
+///
+///Initialize the CS4265.
+///
+    pub fn init(&mut self) -> Result<(), ERROR> {
+        debug::out("cs4265.init(): Initializing CS4265.\r\n");
+        if let Err(err) = self.poll() { //Poll address and chip id.
+            return Err(err);
+        }
+        
+        if let Err(err) = self.rd_regs() { //Read register defaults.
+            return Err(err);
+        }
+
+        debug::out("cs4265.init(): CS4265 initialized.\r\n");
+        return Ok(());
+    }
+///
+///Modify the clock and divider for sample rates.
+///FIXME: Only supports MCLK value of 12.288 MHz
+///
+/// Clock table for CS4265
+/// 
+/// Given Ultra2 MCLK of 12288000 Hz:
+///
+/// Single Speed (ADCCTL::FM::SINGLE_SPEED_4_50_KHZ)
+/// Fs      MCLK  Divider
+/// ------------------------------------------------
+/// 32kHz,  384x, 1.5 (MCLK::DIV::DIV1_5)
+/// 48kHz,  256x, 1.0 (MCLK::DIV::DIV1_0)
+/// 
+/// Double Speed (ADCCTL::FM::DOUBLE_SPEED_50_100_KHZ)
+/// --------------------------------------------------
+/// 64kHz,  192x, 1.5 (MCLK::DIV::DIV1_5)
+/// 96kHz,  128x, 1.0 (MCLK::DIV::DIV1_0)
+/// 
+/// Quad Speed (ADCCTL::FM::QUAD_SPEED_100_200_KHZ)
+/// -----------------------------------------------
+/// 128kHz, 96x, 1.5 (MCLK::DIV::DIV1_5)
+/// 192kHz, 64x, 1.0 (MCLK::DIV::DIV1_0)
+///
+    pub fn modify_clk(&self, fs_hz: u32, mclk_hz: u32) -> Result<(), ERROR> {
+        if mclk_hz == 12_288_000 {
+            if fs_hz == 32_000 {
+                debug::out("cs4265.modify_clk(): SINGLE_SPEED_4_50_KHZ & DIV1_5.\r\n");
+                self.reg.ADCCTL.modify(ADCCTL::FM::SINGLE_SPEED_4_50_KHZ);
+                self.reg.MCLK.modify(MCLK::DIV::DIV1_5);
+            } else if fs_hz == 48_000 {
+                debug::out("cs4265.modify_clk(): SINGLE_SPEED_4_50_KHZ & DIV1_0.\r\n");
+                self.reg.ADCCTL.modify(ADCCTL::FM::SINGLE_SPEED_4_50_KHZ);
+                self.reg.MCLK.modify(MCLK::DIV::DIV1_0);
+            } else if fs_hz == 64_000 {
+                debug::out("cs4265.modify_clk(): DOUBLE_SPEED_50_100_KHZ & DIV1_5.\r\n");
+                self.reg.ADCCTL.modify(ADCCTL::FM::DOUBLE_SPEED_50_100_KHZ);
+                self.reg.MCLK.modify(MCLK::DIV::DIV1_5);
+            } else if fs_hz == 96_000 {
+                debug::out("cs4265.modify_clk(): DOUBLE_SPEED_50_100_KHZ & DIV1_0.\r\n");
+                self.reg.ADCCTL.modify(ADCCTL::FM::DOUBLE_SPEED_50_100_KHZ);
+                self.reg.MCLK.modify(MCLK::DIV::DIV1_0);
+            } else if fs_hz == 128_000 {
+                debug::out("cs4265.modify_clk(): QUAD_SPEED_100_200_KHZ & DIV1_5.\r\n");
+                self.reg.ADCCTL.modify(ADCCTL::FM::QUAD_SPEED_100_200_KHZ);
+                self.reg.MCLK.modify(MCLK::DIV::DIV1_5);
+            } else if fs_hz == 192_000 {
+                debug::out("cs4265.modify_clk(): QUAD_SPEED_100_200_KHZ & DIV1_0.\r\n");
+                self.reg.ADCCTL.modify(ADCCTL::FM::QUAD_SPEED_100_200_KHZ);
+                self.reg.MCLK.modify(MCLK::DIV::DIV1_0);
+            } else {
+                return Err(ERROR::RANGE);
+            }
+        } else {
+            return Err(ERROR::RANGE);
+        }
+
+        return Ok(());
     }
 
-    pub fn poll_status(&mut self) -> Result<(), ERROR> {
-        if let Err(err) = self.i2c.read(self.addr,
-                                        RegisterAddress::STATUS as u8, 
-                                        &mut self.reg.data[1..2])
+///
+///Load the register value into the CS4265.
+///
+    pub fn ld_reg(&self, ra: RegisterAddress) -> Result<(), ERROR> {
+
+        match self.i2c.write(self.addr, 
+                             ra as u8,
+                             &self.reg.data[(ra as usize) - 1..ra as usize]) 
         {
-            Err(ERROR::I2C(err))        
-        } else if self.reg.STATUS.is_set(STATUS::EFTC) {
-            Err(ERROR::STATUS("Completion of an E to F C-Buffer translation."))
-        } else if self.reg.STATUS.is_set(STATUS::CLKERR) {
-            Err(ERROR::STATUS("Clock error."))
-        }else if self.reg.STATUS.is_set(STATUS::ADCOVFL) {
-            Err(ERROR::STATUS("ADC overflow condition."))
-        } else if self.reg.STATUS.is_set(STATUS::ADCUNDRFL) {
-            Err(ERROR::STATUS("ADC underflow condition."))
-        } else {
-            Ok(())
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
         }
+    }
+
+///
+///Read the register value from the CS4265.
+///
+    pub fn rd_reg(&mut self, ra: RegisterAddress) -> Result<(), ERROR> {
+        match self.i2c.read(self.addr, 
+                            ra as u8,
+                            &mut self.reg.data[(ra as usize) - 1..ra as usize]) 
+        {
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
+        }
+    }
+
+///
+///load all the local settings into the CS4265's registers.
+///
+    pub fn ld_regs(&self) -> Result<(), ERROR> {
+//Load settings.
+        match self.i2c.write(self.addr,
+                             RegisterAddress::POWERCTL as u8, 
+                             &self.reg.data[(RegisterAddress::POWERCTL as usize) - 1..])
+        {
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
+        }
+    }
+
+///
+///Read all the CS4265's registers into local memory.
+///
+    pub fn rd_regs(&mut self) -> Result<(), ERROR> {
+        match self.i2c.read(self.addr,
+                            RegisterAddress::POWERCTL as u8, 
+                            &mut self.reg.data[(RegisterAddress::POWERCTL as usize) - 1..])
+        {
+            Ok(_) => {
+                return Ok(());
+            },
+
+            Err(err) => {
+                return Err(ERROR::I2C(err));
+            }
+        }
+    }
+
+///
+///Read all the registers from the device and verify they match the state.
+///
+    pub fn verify_regs(&self) -> Result<(), ERROR> {
+        let mut cur: RegisterInstance = RegisterInstance::default();
+
+        if let Err(err) = self.i2c.read(self.addr,
+                                        RegisterAddress::POWERCTL as u8, 
+                                        &mut cur.data[(RegisterAddress::POWERCTL as usize) - 1..])
+        {
+            return Err(ERROR::I2C(err));
+        }
+        
+        for i in (RegisterAddress::POWERCTL as usize) - 1..cur.data.len() {
+            debug::out("cs4265.verify(): ");
+            debug::u8bits((i + 1) as u8);
+            if self.reg.data[i] != cur.data[i] {
+                debug::out(" Bad  - ");
+            } else {
+                debug::out(" Good - ");
+            }
+            debug::out("Expected / Got: "); 
+            debug::u8bits(self.reg.data[i]);
+            debug::out("/");
+            debug::u8bits(cur.data[i]);
+            debug::out("\r\n");
+        }
+
+        return Ok(());
+    }
+
+    pub fn print_status(&mut self) -> Result<(), ERROR> {
+         
+        if let Err(err) = self.rd_reg(RegisterAddress::STATUS) {
+            return Err(err);
+        }
+
+        if self.reg.STATUS.is_set(STATUS::EFTC) {
+            debug::out("cs4265.print_status(): Completion of an E to F C-Buffer translation.\r\n");
+        }
+
+        if self.reg.STATUS.is_set(STATUS::CLKERR) {
+            debug::out("cs4265.print_status(): Clock error.\r\n");
+        }
+    
+        if self.reg.STATUS.is_set(STATUS::ADCOVFL) {
+            debug::out("cs4265.print_status(): ADC overflow condition.\r\n");
+        }
+        
+        if self.reg.STATUS.is_set(STATUS::ADCUNDRFL) {
+            debug::out("cs4265.print_status(): ADC underflow condition.\r\n");
+        }
+        
+        debug::out("cs4265.print_status(): Done.\r\n");
+        return Ok(());
     }
 
 ///
 ///Poll chip at given address for the chip id.
 ///
-    pub fn poll_chip_id(&mut self, addr: u8) -> Result<(), ERROR> {
+    fn poll_chip_id(&mut self, addr: u8) -> Result<(), ERROR> {
         let mut chipid: [u8;1] = [0];
 
         match self.i2c.read(addr,
@@ -501,7 +690,7 @@ impl <I> CS4265<I> where
 ///
 /// Poll for cs4265 address and chipid.
 ///
-    pub fn poll(&mut self) -> Result<(), ERROR> {
+    fn poll(&mut self) -> Result<(), ERROR> {
         debug::out("cs4265.poll(): Trying LOW address...\r\n");
         match self.poll_chip_id(Address::LOW as u8) {
             Ok(_) => {
@@ -528,81 +717,5 @@ impl <I> CS4265<I> where
                 return Err(err);
             }
         }
-    }
-
-    pub fn init(&mut self) -> Result<(), ERROR> {
-        debug::out("cs4265.init(): Initializing CS4265.\r\n");
-        if let Err(err) = self.poll() { //Poll address and chip id.
-            return Err(err);
-        }
-        debug::out("cs4265.init(): CS4265 initialized.\r\n");
-        return Ok(());
-    }
-
-///
-///Load the register value into the CS4265.
-///
-    pub fn ld_reg(&self, ra: RegisterAddress) -> Result<(), ERROR> {
-
-        match self.i2c.write(self.addr, 
-                             ra as u8,
-                             &self.reg.data[(ra as usize) - 1..ra as usize]) 
-        {
-            Ok(_) => {
-                return Ok(());
-            },
-
-            Err(err) => {
-                return Err(ERROR::I2C(err));
-            }
-        }
-    }
-
-
-///
-///load all the local settings into the CS4265's registers.
-///
-    pub fn ld_regs(&self) -> Result<(), ERROR> {
-//Load settings.
-        match self.i2c.write(self.addr,
-                             RegisterAddress::POWERCTL as u8, 
-                             &self.reg.data[(RegisterAddress::POWERCTL as usize) - 1..])
-        {
-            Ok(_) => {
-                return Ok(());
-            },
-
-            Err(err) => {
-                return Err(ERROR::I2C(err));
-            }
-        }
-    }
-    
-///
-///Read all the registers from the device and verify they match the state.
-///
-    pub fn verify_regs(&self) -> Result<(), ERROR> {
-        let mut cur: RegisterInstance = RegisterInstance::default();
-
-        if let Err(err) = self.i2c.read(self.addr,
-                                        RegisterAddress::POWERCTL as u8, 
-                                        &mut cur.data[(RegisterAddress::POWERCTL as usize) - 1..])
-        {
-            return Err(ERROR::I2C(err));
-        }
-        
-        for i in 1..cur.data.len() {
-            if self.reg.data[i] != cur.data[i] {
-                debug::out("cs4265.verify(): Got difference: Expected / Got \r\n");
-                debug::u8bits(self.reg.data[i]);
-                debug::out("/");
-                debug::u8bits(cur.data[i]);
-                debug::out("\r\n");
-            } else {
-                debug::out("cs4265.verify(): No difference.\r\n");
-            }
-        }
-
-        return Ok(());
     }
 }

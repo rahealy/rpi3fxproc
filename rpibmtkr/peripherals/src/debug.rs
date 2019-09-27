@@ -22,6 +22,11 @@
  * SOFTWARE.
  */
 
+/*
+ * Writes informational text to uart0.
+ * FIXME: Get rid of singleton-like construction. Rust doesn't like it.
+ */
+
 use crate::uart;
 
 pub struct Dbg {
@@ -47,16 +52,25 @@ pub fn out(val: &str) {
     }
 }
 
+pub fn bit(val: bool) {
+    unsafe {
+        match &mut DBG {
+            Some(dbg) => {
+                dbg.uart.send( if val { '1' } else { '0' } );
+            }
+            None => {}
+        }
+    }    
+}
+
 pub fn u8bits(val: u8) {
     unsafe {
         match &mut DBG {
             Some(dbg) => {
-                for i in 0..8 {
-                    if ((1 << i) & val) > 0 {
-                        dbg.uart.send('1');
-                    } else {
-                        dbg.uart.send('0');
-                    }
+                for i in (0..8).rev() {
+                    dbg.uart.send( 
+                        if ((1 << i) & val) > 0 { '1' } else { '0' } 
+                    );
                 }
             }
             None => {}
@@ -68,12 +82,10 @@ pub fn u32bits(val: u32) {
     unsafe {
         match &mut DBG {
             Some(dbg) => {
-                for i in 0..32 {
-                    if ((1 << i) & val) > 0 {
-                        dbg.uart.send('1');
-                    } else {
-                        dbg.uart.send('0');
-                    }
+                for i in (0..32).rev() {
+                    dbg.uart.send( 
+                        if ((1 << i) & val) > 0 { '1' } else { '0' } 
+                    );
                 }
             }
             None => {}

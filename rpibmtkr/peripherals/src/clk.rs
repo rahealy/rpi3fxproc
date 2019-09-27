@@ -87,12 +87,12 @@ impl PCMDIV {
 ///
 /// Set 12 bit integer and fractional values of divider.
 ///
-    fn set(&self, fsck: u32) {
+    fn set(&self, fsck: u32, fosc: u32) {
         self.write(CM_PCMDIV::PASSWD::VAL);
         self.write (
             CM_PCMDIV::PASSWD::VAL +
-            CM_PCMDIV::DIVI.val(19_200_000 / fsck) +                 //Integer divisor of 10
-            CM_PCMDIV::DIVF.val((4095 * (19_200_000 % fsck)) / fsck) //Fractional divisor of 1/4095
+            CM_PCMDIV::DIVI.val(fosc / fsck) +                 //Integer divisor of 10
+            CM_PCMDIV::DIVF.val((4095 * (fosc % fsck)) / fsck) //Fractional divisor of 1/4095
         );
     }
     
@@ -100,8 +100,8 @@ impl PCMDIV {
         self.write(CM_PCMDIV::PASSWD::VAL);
         self.write (
             CM_PCMDIV::PASSWD::VAL +
-            CM_PCMDIV::DIVI.val(0) +                 //Integer divisor of 10
-            CM_PCMDIV::DIVF.val(0) //Fractional divisor of 1/4095
+            CM_PCMDIV::DIVI.val(0) +  //Integer divisor of 10
+            CM_PCMDIV::DIVF.val(0)    //Fractional divisor of 1/4095
         );
     }
 }
@@ -208,13 +208,13 @@ impl PCMCTL {
         debug::out("pcmctl.i2s_enable(): Configuring clock.\r\n");
         self.modify (
             CM_PCMCTL::PASSWD::VAL +
-            CM_PCMCTL::MASH::INT + //MASH set to integer.
-            CM_PCMCTL::SRC::OSC    //Use oscillator for clock source.
+            CM_PCMCTL::MASH::ONE   + //MASH set to one stage.
+            CM_PCMCTL::SRC::OSC      //Use oscillator for clock source.
         );
 
 //Oscillator clock source is fixed at 19200000Hz.
         debug::out("pcmctl.i2s_enable(): Setting clock divider.\r\n");
-        PCMDIV::default().set(fsck);
+        PCMDIV::default().set(fsck, 19_200_000);
 
 //Keep the control values used to set divider and enable. Wait until started.
         debug::out("pcmctl.i2s_enable(): Enabling clock.\r\n");
@@ -239,7 +239,7 @@ impl PCMCTL {
 
         debug::out("pcmctl.i2s_disable(): Clearing clock divider.\r\n");
         PCMDIV::default().clear();
-        debug::out("pcmctl.i2s_disable(): PCM disable for i2s operation complete.\r\n");
+        debug::out("pcmctl.i2s_disable(): Clock disabled.\r\n");
     }
 
 }

@@ -245,6 +245,7 @@ impl GPCLR {
  * Ultra2
  *********************************************************************/
 
+#[derive(Default)]
 pub struct Ultra2<SI2C, SI2S, STIMER> where 
     SI2C: i2c::I2C,
     SI2S: i2s::I2S,
@@ -252,123 +253,183 @@ pub struct Ultra2<SI2C, SI2S, STIMER> where
 {
     pub cs4265: cs4265::CS4265<SI2C>,
     pub i2s: SI2S,
-    pub timer: STIMER
+    pub timer: STIMER,
+    freeze:  bool,
+    pdn_mic: bool,
+    pdn_adc: bool,
+    pdn_dac: bool,
+    dacvola: u8,
+    dacvolb: u8,
+    smplrt: u32
 }
 
-
-impl <II2C, II2S, ITIMER> Default for Ultra2<II2C, II2S, ITIMER> where 
-    II2C: i2c::I2C + Default,
-    II2S: i2s::I2S + Default,
-    ITIMER: timer::Timer + Default
-{
-    fn default() -> Ultra2<II2C, II2S, ITIMER> {
-        Ultra2::<II2C, II2S, ITIMER> {
-            cs4265: cs4265::CS4265::<II2C>::default(),
-            i2s: <II2S>::default(),
-            timer: <ITIMER>::default()
-        }
-    }
-}
 
 impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where 
     II2C: i2c::I2C + Default,
     II2S: i2s::I2S + Default,
     ITIMER: timer::Timer + Default
 {
-    pub fn reset(&self, on: bool) {
-        if on {
-            GPSET::default().GPSET0.modify(GPSET0::PSET5::CLEAR);
-            debug::out("ultra2.reset(): Reset enabled.\r\n");
-        } else {
-            debug::out("ultra2.reset(): Releasing reset. Waiting two seconds for settle.\r\n");
-            GPSET::default().GPSET0.modify(GPSET0::PSET5::SET);
-            self.timer.one_shot(2_000_000);
-        }
+///
+///Freeze the controls. FIXME: This shouldn't be public.
+///
+    pub fn freeze(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.freeze = val;
+        new
     }
 
 
+///
+///Power down/up the microphone.
+///
+    pub fn pdn_mic(&mut self, pdn: bool) -> &mut Self {
+        let mut new = self;
+        new.pdn_mic = pdn;
+        new
+    }
+
+
+///
+///Power down/up the ADC.
+///
+    pub fn pdn_adc(&mut self, pdn: bool) -> &mut Self {
+        let mut new = self;
+        new.pdn_adc = pdn;
+        new
+    }
+
+
+///
+///Power down/up the DAC.
+///
+    pub fn pdn_dac(&mut self, pdn: bool) -> &mut Self {
+        let mut new = self;
+        new.pdn_dac = pdn;
+        new
+    }
+
+///
+///Sample rate.
+///
+    pub fn smplrt(&mut self, val: u32) -> &mut Self {
+        let mut new = self;
+        new.smplrt = val;
+        new
+    }
+
+    
+//FIXME: Implement gain some day.
+// ///
+// ///Gain for channel A. Number of half steps from -12dB..12dB.
+// ///
+//     pub fn adc_gain_a(&mut self, val: i8) -> &mut Self {
+//         let mut new = self;
+//         if val > 24 {
+//             val = 24;
+//         } else if val < -24 {
+//             val = -24;
+//         }
+//         new.adcgaina = val;
+//         new
+//     }
+// 
+// ///
+// ///Gain for channel B.
+// ///
+//     pub fn adc_gain_b(&mut self, val: i8) -> &mut Self {
+//         let mut new = self;
+//         new.adcgainb = 0xFF - val;
+//         new
+//     }
+
+///
+///Volume for channel A.
+///
+    pub fn dac_vol_a(&mut self, val: u8) -> &mut Self {
+        let mut new = self;
+        new.dacvola = 0xFF - val;
+        new
+    }
+
+///
+///Volume for channel B.
+///
+    pub fn dac_vol_b(&mut self, val: u8) -> &mut Self {
+        let mut new = self;
+        new.dacvolb = 0xFF - val;
+        new
+    }
+
+///
+///The cs4265 uses i2s to communicate audio data to the RPi.
+///
     fn cfg_i2s(&self) -> Result<(), ERROR> {
-//The cs4265 uses i2s to communicate audio data to the RPi.
-//Set up RPi i2s as slave for 2 channel 48kHz, 24bit audio.
         debug::out("ultra2.cfg_i2s(): Configuring RPi i2s.\r\n");
         let mut pcm = i2s::PCMParams::default();
 
-        pcm.rxon(true).
-            txon(true).
+        pcm.rxon(!self.pdn_adc). //rxon is the opposite of power down
+            txon(!self.pdn_dac).
             fs_master(false).
             clk_master(false).
             chlen(32,32).       //FIXME: CS4265 has a 2x32bit frame length?
-            smplrt(48000);
+            smplrt(self.smplrt);
 
-        pcm.rx.ch1.enable(true).
+        pcm.rx.ch1.enable(!self.pdn_adc).
                    width(24). //Sample width is 24 bits.
                    pos(1);    //Sample data starts 1 clock after frame begins.
 
-        pcm.rx.ch2.enable(true).
+        pcm.rx.ch2.enable(!self.pdn_adc).
                    width(24). //Sample width is 24 bits.
                    pos(33);   //Data starts 33 clocks after frame begins.
 
-        pcm.tx.ch1.enable(true).
+        pcm.tx.ch1.enable(!self.pdn_dac).
                    width(24). //Sample width is 24 bits.
                    pos(1);    //Data starts 1 clock after frame begins.
 
-        pcm.tx.ch2.enable(true).
+        pcm.tx.ch2.enable(!self.pdn_dac).
                    width(24). //Sample width is 24 bits.
                    pos(33);   //Data starts 33 clocks after frame begins.
 
         debug::out("ultra2.cfg_i2s(): Loading i2s configuration.\r\n");
         self.i2s.load(&pcm);
-        debug::out("ultra2.cfg_i2s(): RPi i2s configured.\r\n");
-        
+        debug::out("ultra2.cfg_i2s(): i2s configuration loaded.\r\n");
+
+        debug::out("ultra2.cfg_i2s(): RPi i2s configured.\r\n");        
         return Ok(());
     }
 
-    pub fn cfg_cs4265(&mut self) -> Result<(), ERROR> {
+    fn cfg_cs4265(&mut self) -> Result<(), ERROR> {
         debug::out("ultra2.cfg_cs4265(): Configuring CS4265.\r\n");
 
-//Initialize CS4265.
-        if let Err(err) = self.cs4265.init() {
-            return Err(ERROR::CS4265(err));
-        }
-
 //Power down CS4265.
-        debug::out("ultra2.cfg_cs4265(): Powering down CS4265.\r\n");
-        self.cs4265.reg.POWERCTL.write (
-            cs4265::POWERCTL::FREEZE::SET    + //Freeze the registers.
-            cs4265::POWERCTL::PDN_MIC::SET   + //Power down the microphone.
-            cs4265::POWERCTL::PDN_ADC::SET   + //Power down the ADC
-            cs4265::POWERCTL::PDN_DAC::SET   + //Power down the DAC
-            cs4265::POWERCTL::PDN::SET         //Power down the whole device until load.
-        );
-
-        if let Err(err) = self.cs4265.ld_reg(RegisterAddress::POWERCTL) {
-            return Err(ERROR::CS4265(err));
+        debug::out("ultra2.cfg_cs4265(): Powering down.\r\n");
+        if let Err(err) = self.power_down() {
+            return Err(err);
         }
-        debug::out("ultra2.cfg_cs4265(): CS4265 powered down.\r\n");
+        debug::out("ultra2.cfg_cs4265(): Powered down.\r\n");
 
 //Set DAC control.
-        self.cs4265.reg.DACCTL1.write (
+        self.cs4265.reg.DACCTL1.modify (
             cs4265::DACCTL1::DAC_DIF::I2S24BIT + //Use I2S protocol.
             cs4265::DACCTL1::DEEMPH::CLEAR     + //No de-emphaisis.
             cs4265::DACCTL1::MUTEDAC::CLEAR      //Unmuted.
         );
 
-//Set ADC control and MCLK for 48kHz sample rate (see table in comment at top of this file.)
-        self.cs4265.reg.ADCCTL.write (
-            cs4265::ADCCTL::FM::SINGLE_SPEED_4_50_KHZ + //Use single speed per table.
+//Set ADC control.
+        self.cs4265.reg.ADCCTL.modify (
             cs4265::ADCCTL::ADC_DIF::I2S24BIT         + //Use I2S protocol.
             cs4265::ADCCTL::HPFFREEZE::CLEAR          + //Leave the dc bias filter unfrozen.
             cs4265::ADCCTL::MUTEADC::CLEAR            + //Unmuted.
-            cs4265::ADCCTL::MS::SET                     //Set to master.
+            cs4265::ADCCTL::MS::CLEAR                   //Set to slave. FIXME: Speakers hum if this isn't clear.
         );
 
-//Set MCLK divider.
-        self.cs4265.reg.MCLK.write (
-            cs4265::MCLK::DIV::DIV1_0  //Divider is 1.0 per table.
-        );
+//Set clock for sample rate and Ultra2 board's clock rate (12.288 MHz).
+        if let Err(err) = self.cs4265.modify_clk(self.smplrt, 12_288_000) {
+            return Err(ERROR::CS4265(err));
+        }
 
 //Set signal selection.
-        self.cs4265.reg.SIGSEL.write (
+        self.cs4265.reg.SIGSEL.modify (
             cs4265::SIGSEL::SDINSEL::SDIN1 + //Use digital input 1.
             cs4265::SIGSEL::LOOP::CLEAR      //Disable loopback.
         );
@@ -378,33 +439,33 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         self.cs4265.reg.PGAA.set(0);
 
 //Set soft ramp, zero crossing detection and line level.
-        self.cs4265.reg.AICTL.write (
-            cs4265::AICTL::PGASOFT::SET + //Use soft ramp on mute and data loss.
-            cs4265::AICTL::PGAZERO::SET + //Use zero crossing detection.
-            cs4265::AICTL::SELECT::LINE   //Line level.
+        self.cs4265.reg.AICTL.modify (
+            cs4265::AICTL::PGASOFT::CLEAR + //Do not use soft ramp on mute and data loss.
+            cs4265::AICTL::PGAZERO::CLEAR + //Do not use zero crossing detection.
+            cs4265::AICTL::SELECT::LINE     //Line level.
         );
 
 //Full volume.
-        self.cs4265.reg.DACVOLA.set(0xFF);
-        self.cs4265.reg.DACVOLB.set(0xFF);
+        self.cs4265.reg.DACVOLA.set(self.dacvola);
+        self.cs4265.reg.DACVOLB.set(self.dacvolb);
 
 //Set soft ramp, zero crossing detection and invert.
-        self.cs4265.reg.DACCTL2.write (
-            cs4265::DACCTL2::DACSOFT::SET     + //Use soft ramp on mute and data loss.
-            cs4265::DACCTL2::DACZERO::SET     + //Use zero crossing detection.
-            cs4265::DACCTL2::INVERTDAC::CLEAR   //Do not invert output.
+        self.cs4265.reg.DACCTL2.modify ( //FIXME: Possible anomaly Bit 0 is reserved and set - different from datasheet.
+            cs4265::DACCTL2::DACSOFT::CLEAR     + //Do not use soft ramp on mute and data loss.
+            cs4265::DACCTL2::DACZERO::CLEAR     + //Do not use zero crossing detection.
+            cs4265::DACCTL2::INVERTDAC::CLEAR     //Do not invert output.
         );
 
 //Select which conditions affect the STATUS register. 
-        self.cs4265.reg.STATUSMASK.write (
-            cs4265::STATUSMASK::EFTCM::CLEAR    + //Not using S/PDIF.
+        self.cs4265.reg.STATUSMASK.modify (
+            cs4265::STATUSMASK::EFTCM::SET      + //Set status bit on S/PDIF error.
             cs4265::STATUSMASK::CLKERRM::SET    + //Set status bit on clock error.
             cs4265::STATUSMASK::ADCOVFLM::SET   + //Set status bit on overflow error.
             cs4265::STATUSMASK::ADCUNDRFLM::SET   //Set status bit on underflow.
         );
 
 //All updates to status register occur on rising edge.
-        self.cs4265.reg.STATUSMODEMSB.write (
+        self.cs4265.reg.STATUSMODEMSB.modify (
             cs4265::STATUSMODEMSB::EFTC1::CLEAR      +
             cs4265::STATUSMODEMSB::CLKERR1::CLEAR    +
             cs4265::STATUSMODEMSB::ADCOVFL1::CLEAR   +
@@ -412,7 +473,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         );
 
 //All updates to status register occur on rising edge.
-        self.cs4265.reg.STATUSMODELSB.write (
+        self.cs4265.reg.STATUSMODELSB.modify (
             cs4265::STATUSMODELSB::EFTC0::CLEAR      +
             cs4265::STATUSMODELSB::CLKERR0::CLEAR    +
             cs4265::STATUSMODELSB::ADCOVFL0::CLEAR   +
@@ -420,8 +481,9 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         );
 
 //Turn off S/PDIF transmitter.
-        self.cs4265.reg.XMITCTL2.write ( 
-            cs4265::XMITCTL2::TXOFF::SET
+        self.cs4265.reg.XMITCTL2.modify (
+            cs4265::XMITCTL2::TX_DIF::I2S24BIT +
+            cs4265::XMITCTL2::TXOFF::CLEAR
         );
 
 //Load configuration.
@@ -430,21 +492,96 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
             return Err(ERROR::CS4265(err));
         }
 
-        debug::out("ultra2.cfg_cs4265(): Powering up CS4265.\r\n");
+//Print status of CS4265.
+        if let Err(err) = self.cs4265.print_status() {
+            return Err(ERROR::CS4265(err));
+        }
+
+//Verify local copy of registers matches CS4265 registers.
+        if let Err(err) = self.cs4265.verify_regs() {
+            return Err(ERROR::CS4265(err));
+        }
+
+        debug::out("ultra2.cfg_cs4265(): CS4265 configured.\r\n");        
+        return Ok(());
+    }
+
+///
+///When reset is on then Ultra2 is put into reset and non-operational.
+///
+    pub fn reset(&self, on: bool) {
+        if on {
+            GPCLR::default().GPCLR0.modify(GPCLR0::PCLR5::SET);
+            debug::out("ultra2.reset(): Reset enabled.\r\n");
+        } else {
+            debug::out("ultra2.reset(): Releasing reset. Waiting two seconds for settle.\r\n");
+            GPSET::default().GPSET0.modify(GPSET0::PSET5::SET);
+            self.timer.one_shot(2_000_000);
+            debug::out("ultra2.reset(): Reset released.\r\n");
+        }
+    }
+
+///
+///Power up the CS4265.
+///
+    pub fn power_up(&mut self) -> Result<(), ERROR> {
+        debug::out("ultra2.powerctl(): Powering up CS4265.\r\n");
         self.cs4265.reg.POWERCTL.write (
-            cs4265::POWERCTL::FREEZE::CLEAR   + //Unfreeze the registers.
-            cs4265::POWERCTL::PDN_MIC::SET    + //Power down the microphone.
-            cs4265::POWERCTL::PDN_ADC::SET    + //Power down the ADC
-            cs4265::POWERCTL::PDN_DAC::CLEAR  + //Power up DAC
-            cs4265::POWERCTL::PDN::CLEAR        //Power up device.
+            cs4265::POWERCTL::FREEZE.val(self.freeze as u8)     + //Freeze/thaw the registers.
+            cs4265::POWERCTL::PDN_MIC.val(self.pdn_mic as u8)   + //Power down/up microphone.
+            cs4265::POWERCTL::PDN_ADC.val(self.pdn_adc as u8)   + //Power down/up the ADC
+            cs4265::POWERCTL::PDN_DAC.val(self.pdn_dac as u8)   + //Power down/up DAC
+            cs4265::POWERCTL::PDN::CLEAR                          //Power up device.
         );
 
         if let Err(err) = self.cs4265.ld_reg(RegisterAddress::POWERCTL) {
             return Err(ERROR::CS4265(err));
         }
-        debug::out("ultra2.init(): CS4265 powered up.\r\n");
+        self.timer.one_shot(2_000_000);
+        
+        //Print status of CS4265.
+        if let Err(err) = self.cs4265.print_status() {
+            return Err(ERROR::CS4265(err));
+        }
 
-        debug::out("ultra2.cfg_cs4265(): CS4265 configured.\r\n");        
+        //Verify local copy of registers matches CS4265 registers.
+        if let Err(err) = self.cs4265.verify_regs() {
+            return Err(ERROR::CS4265(err));
+        }
+
+        debug::out("ultra2.powerctl(): CS4265 power up complete.\r\n");
+        return Ok(());
+    }
+
+///
+///Power down the CS4265.
+///
+    pub fn power_down(&mut self) -> Result<(), ERROR> {
+        debug::out("ultra2.powerctl(): Powering down CS4265.\r\n");
+        self.cs4265.reg.POWERCTL.write (
+            cs4265::POWERCTL::FREEZE::SET  + //Freeze/thaw the registers.
+            cs4265::POWERCTL::PDN_MIC::SET + //Power down microphone.
+            cs4265::POWERCTL::PDN_ADC::SET + //Power down the ADC
+            cs4265::POWERCTL::PDN_DAC::SET + //Power down DAC
+            cs4265::POWERCTL::PDN::SET       //Power down device.
+        );
+
+        if let Err(err) = self.cs4265.ld_reg(RegisterAddress::POWERCTL) {
+            return Err(ERROR::CS4265(err));
+        }
+        self.timer.one_shot(2_000_000);
+
+        //Print status of CS4265.
+        if let Err(err) = self.cs4265.print_status() {
+            return Err(ERROR::CS4265(err));
+        }
+
+        //Verify local copy of registers matches CS4265 registers.
+        if let Err(err) = self.cs4265.verify_regs() {
+            return Err(ERROR::CS4265(err));
+        }
+        
+        debug::out("ultra2.powerctl(): CS4265 power down complete.\r\n");
         return Ok(());
     }
 
@@ -452,29 +589,46 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 ///Intialize board.
 ///
     pub fn init(&mut self) -> Result<(), ERROR> {
-//Select the reset pin on the RPi and release the reset.
+//Select the reset pin on the RPi.
         GPFSEL::default().fsel_ultra2();
+        
+//Bring the board out of reset.
         self.reset(false);
 
+//Initialize CS4265.
+        if let Err(err) = self.cs4265.init() {
+            return Err(ERROR::CS4265(err));
+        }
+
+//Verify local copy of registers matches CS4265 registers.
+        if let Err(err) = self.cs4265.verify_regs() {
+            return Err(ERROR::CS4265(err));
+        }
+
+        return Ok(());
+    }
+
+///
+///Configure the RPi I2S bus and the CS4265 on the ultra2.
+///
+///After configuration:
+/// If applicable write data to I2S.
+/// Enable I2S to start processing.
+/// Use Ultra2::pdn(false) to power up CS4265.
+///
+///
+    pub fn cfg(&mut self) -> Result<(), ERROR> {
 //Configure the RPi i2s bus for communicating with the Ultra2 board.
         if let Err(err) = self.cfg_i2s() {
             return Err(err);
         }
 
-//Initialize and configure the CS4265.
+//Configure the CS4265.
         if let Err(err) = self.cfg_cs4265() {
             return Err(err);
         }
 
-        debug::out("ultra2.init(): Polling i2s status.\r\n");
-        self.i2s.poll_status();
-
-        debug::out("ultra2.init(): Verify CS4265 registers.\r\n");
-        if let Err(err) = self.cs4265.verify_regs() {
-            return Err(ERROR::CS4265(err));
-        }
-
-        debug::out("ultra2.init(): Ultra2 initialized.\r\n");
+        debug::out("ultra2.cfg(): Ultra2 configured.\r\n");
         return Ok(());
     }
 }

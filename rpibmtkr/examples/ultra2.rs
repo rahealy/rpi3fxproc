@@ -59,7 +59,7 @@ fn main() -> ! {
     Uart0::init();
     debug::init();
     I2C1::init();
-    I2S0::init();
+    I2S0::init(); 
 
     
 //Write a bunch of dots to mark boot.
@@ -71,6 +71,16 @@ fn main() -> ! {
 //CS4265 communicates audio data via i2s. Use RPi I2S0.
 //Various Ultra2 operations requre a delay so use RPi System Timer1
     let mut ultra2 = Ultra2::<I2C1, I2S0, Timer1>::default();
+    let i2s = I2S0::default();
+
+//Set up Ultra2 hat.
+    ultra2.freeze(false).
+           pdn_mic(true).   //Power down microphone.
+           pdn_adc(true).   //Power down ADC.
+           pdn_dac(false).  //Use DAC
+           dac_vol_a(0xFF). //Full volume.
+           dac_vol_b(0xFF). //Full volume.
+           smplrt(48_000);  //48kHz sample rate.
 
     if let Err(err) = ultra2.init() {
         debug::out("main(): Error ultra2.init() failed - ");     
@@ -79,10 +89,51 @@ fn main() -> ! {
         panic!();
     }
 
-//    I2S0::default().write_test_pattern();
-//    I2S0::default().enable_tx(true);
-//    I2S0::default().write_test_pattern2();
+    if let Err(err) = ultra2.cfg() {
+        debug::out("main(): Error ultra2.cfg() failed - ");     
+        debug::out(err.msg());
+        debug::out("\r\n");
+        panic!();
+    }
+
+//Initially fill buffer with zeroes.
+    i2s.tx_fill(0x00000000);
+
+//Power up cs4265.
+    if let Err(err) = ultra2.power_up() {
+        debug::out("main(): Error ultra2.power_up() failed - ");
+        debug::out(err.msg());
+        debug::out("\r\n");
+        panic!();
+    }
+
+//Turn on i2s transmitter.
+    i2s.tx_on(true);
+
+    i2s.print_status();
+
+//    debug::out("main(): Output square wave indefinitely.\r\n");
+//Write square wave.
+    debug::out("main(): Write square wave.\r\n");
+    let mut e: u32 = 0;
+    for _ in 0..(48_000 / 218) {
+//            debug::out("main(): HERE2!\r\n");
+        e = i2s.tx_write_val(0x00080000, 109);
+        if e > 0 {
+            debug::out("!"); //Error detected.
+//            debug::u32bits(e);
+        }
+//            debug::out("main(): HERE3!\r\n");
+        e = i2s.tx_write_val(0x00080001, 109);
+        if e > 0 {
+            debug::out("!"); //Error detected.
+//            debug::u32bits(e);
+        }
+//            debug::out("main(): HERE4!\r\n");
+    }
+    debug::out("main(): Square wave written.\r\n");
 
     loop {
+//        debug::out(".");
     }
 }

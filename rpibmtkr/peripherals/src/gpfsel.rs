@@ -124,9 +124,9 @@ const GPFSEL0_BASE:   u32 = MMIO_BASE + GPFSEL0_OFFSET;
 #[allow(non_snake_case)]
 #[repr(C)]
 pub struct RegisterBlockGPFSEL {
-    GPFSEL0: ReadWrite<u32, GPFSEL0::Register>, // 0x00200000
-    GPFSEL1: ReadWrite<u32, GPFSEL1::Register>, // 0x00200004
-    GPFSEL2: ReadWrite<u32, GPFSEL2::Register>  // 0x00200008
+    pub GPFSEL0: ReadWrite<u32, GPFSEL0::Register>, // 0x00200000
+    pub GPFSEL1: ReadWrite<u32, GPFSEL1::Register>, // 0x00200004
+    pub GPFSEL2: ReadWrite<u32, GPFSEL2::Register>  // 0x00200008
 }
 
 ///
@@ -163,17 +163,17 @@ impl GPFSEL {
 ///Select alternate GPIO pin functions for the I2S peripheral.
 ///
     pub fn fsel_i2s(&self) {
-        self.GPFSEL1.modify(GPFSEL1::FSEL18::INPUT + 
-                            GPFSEL1::FSEL19::INPUT);
+        self.GPFSEL1.modify(GPFSEL1::FSEL18::INPUT);
+        self.GPFSEL1.modify(GPFSEL1::FSEL18::PCM_CLK);
+        
+        self.GPFSEL1.modify(GPFSEL1::FSEL19::INPUT);
+        self.GPFSEL1.modify(GPFSEL1::FSEL19::PCM_FS);
 
-        self.GPFSEL1.modify(GPFSEL1::FSEL18::PCM_CLK + 
-                            GPFSEL1::FSEL19::PCM_FS);
+        self.GPFSEL2.modify(GPFSEL2::FSEL20::INPUT); 
+        self.GPFSEL2.modify(GPFSEL2::FSEL20::PCM_DIN);
 
-        self.GPFSEL2.modify(GPFSEL2::FSEL20::INPUT + 
-                            GPFSEL2::FSEL21::INPUT);
-
-        self.GPFSEL2.modify(GPFSEL2::FSEL20::PCM_DIN + 
-                            GPFSEL2::FSEL21::PCM_DOUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL21::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL21::PCM_DOUT);
     }
 
     pub fn fsel_uart0(&self) {
