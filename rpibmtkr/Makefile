@@ -13,7 +13,7 @@
 #
 
 TARGET = aarch64-unknown-none
-EXAMPLES = timer ultra2 i2s
+EXAMPLES = timer ultra2 i2s i2s_listener
 
 all: debug
 
@@ -43,3 +43,8 @@ i2s: ./examples/i2s.rs ./examples/startup.rs
 	cargo xrustc --example i2s --target=$(TARGET) --release
 	cp ./target/$(TARGET)/release/examples/i2s .
 	cargo objcopy -- --strip-all -O binary ./i2s
+
+i2s_listener: ./examples/i2s_listener.rs ./examples/startup.rs
+	cargo xrustc --example i2s_listener --target=$(TARGET) --release
+	cp ./target/$(TARGET)/release/examples/i2s_listener .
+	cargo objcopy -- --strip-all -O binary ./i2s_listener
