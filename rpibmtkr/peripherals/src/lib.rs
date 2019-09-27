@@ -27,6 +27,7 @@
 pub mod clk;
 pub mod debug;
 pub mod gpfsel;
+pub mod gplev;
 pub mod i2c;
 pub mod i2s;
 pub mod mbox;
