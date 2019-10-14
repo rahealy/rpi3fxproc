@@ -12,18 +12,18 @@
 # Example:
 #  $ make clean release
 #
-
+ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 BINARY = rpi3serbtldr_tx
 
 all: debug
 
 debug:
 	cargo build
-	cp ./target/debug/$(BINARY) .
+	cp $(ROOT_DIR)/target/debug/$(BINARY) .
 
 release:
 	cargo build --release
-	cp ./target/release/$(BINARY) .
+	cp $(ROOT_DIR)/target/release/$(BINARY) .
 
 clean:
 	cargo clean

@@ -19,15 +19,16 @@ BINARY = rpi3serbtldr_rx
 all: debug
 
 debug:
-	cargo xrustc --target=$(TARGET)
-	cp ./target/$(TARGET)/debug/$(BINARY) .
-	cargo objcopy -- --strip-all -O binary ./$(BINARY)
+	cargo xrustc --target=$(TARGET) -- --emit asm
+	cp ./target/$(TARGET)/debug/$(BINARY) ./kernel8.img
+	cargo objcopy -- --strip-all -O binary ./kernel8.img
 
 release:
-	cargo xrustc --target=$(TARGET) --release
+	cargo xrustc --target=$(TARGET) --release -- --emit asm
 	cp ./target/$(TARGET)/release/$(BINARY) ./kernel8.img
 	cargo objcopy -- --strip-all -O binary ./kernel8.img
 
 clean:
 	cargo clean
 	-rm $(BINARY)
+	-rm ./kernel8.img
