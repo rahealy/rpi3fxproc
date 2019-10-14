@@ -52,7 +52,7 @@ register_bitfields! {
 ///GPIO level bank 1. 0x7E200038
     GPLEV1 [
 ///LEV 0
-        LEV0 OFFSET(0) NUMBITS(1) []
+        LEV32 OFFSET(0) NUMBITS(1) []
     ]
 }
 

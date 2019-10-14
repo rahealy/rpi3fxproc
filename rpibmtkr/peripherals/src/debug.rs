@@ -78,6 +78,40 @@ pub fn u8bits(val: u8) {
     }    
 }
 
+pub fn u8hex(val: u8) {
+    unsafe {
+        match &mut DBG {
+            Some(dbg) => {
+                dbg.uart.puts("0x");
+                for i in 0..2 {
+                    dbg.uart.send( 
+                        match (val << (i * 4)) & 0b1111_0000 {
+                            0x00 => '0',
+                            0x10 => '1',
+                            0x20 => '2',
+                            0x30 => '3',
+                            0x40 => '4',
+                            0x50 => '5',
+                            0x60 => '6',
+                            0x70 => '7',
+                            0x80 => '8',
+                            0x90 => '9',
+                            0xA0 => 'A',
+                            0xB0 => 'B',
+                            0xC0 => 'C',
+                            0xD0 => 'D',
+                            0xE0 => 'E',
+                            0xF0 => 'F',
+                            _    => ' '
+                        }
+                    );
+                }
+            }
+            None => {}
+        }
+    }    
+}
+
 pub fn u32bits(val: u32) {
     unsafe {
         match &mut DBG {

@@ -105,7 +105,50 @@ register_bitfields! {
 /// I/O Pin 40 (SDOUT)
         FSEL21 OFFSET(3) NUMBITS(3) [
             INPUT = 0b000,
+            OUTPUT = 0b001,
             PCM_DOUT = 0b100 // I2S - Alternate function 0
+        ],
+        
+///I/O Pin (ARM_TRST)
+        FSEL22 OFFSET(6) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TRST = 0b011 // JTAG - Alternate function 4
+        ],
+        
+///I/O Pin (ARM_RTCK)
+        FSEL23 OFFSET(9) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_RTCK = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TDO)
+        FSEL24 OFFSET(12) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TDO = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TCK)
+        FSEL25 OFFSET(15) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TCK = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TDI)
+        FSEL26 OFFSET(18) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TDI = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TMS)
+        FSEL27 OFFSET(21) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TMS = 0b011 // JTAG - Alternate function 4
         ]
     ]
 }
@@ -188,5 +231,25 @@ impl GPFSEL {
                             GPFSEL1::FSEL15::INPUT);
         self.GPFSEL1.modify(GPFSEL1::FSEL14::TXD1 + 
                             GPFSEL1::FSEL15::RXD1);
+    }
+
+    pub fn fsel_jtag(&self) {
+        self.GPFSEL2.modify(GPFSEL2::FSEL22::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL22::ARM_TRST);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL23::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL23::ARM_RTCK);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL24::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL24::ARM_TDO);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL25::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL25::ARM_TCK);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL26::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL26::ARM_TDI);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL27::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL27::ARM_TMS);
     }
 }

@@ -56,6 +56,147 @@ impl ERROR {
     }
 }
 
+/**********************************************************************
+ * I2S
+ *********************************************************************/
+
+pub trait I2S {
+    fn init() {
+        debug::out("i2s.init(): Initializing I2S.\r\n");
+        GPFSEL::default().fsel_i2s();  //Select the GPIO pins for I2S.
+        debug::out("i2s.init(): I2S initialized.\r\n");
+    }
+
+    fn load(&self, params: &Params);
+//    fn print_status(&self);
+    fn tx_on(&self, val: bool);
+    fn rx_on(&self, val: bool);
+}
+
+/**********************************************************************
+ * Params
+ *********************************************************************/
+
+#[derive(Default)]
+pub struct Channel {
+    en:  bool, //Channel enable.
+    wid: u32,  //Bit depth.
+    wex: u32,  //Bit extend for >24 bit samples.
+    pos: u32,  //Position in frame.
+}
+
+impl Channel {
+    pub fn enable(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.en = val;
+        new
+    }
+
+    pub fn width(&mut self, val: u32) -> &mut Self {
+        let mut new = self;
+        new.wex = 0;
+        if val <= 8 {         //8 bit.
+            new.wid = 0x0; 
+        } else if val <= 16 { //16 bit.
+            new.wid = 0x8;
+        } else if val <= 24 { //24 bit.
+            new.wid = 0xF;
+        } else {              //32 bit.
+            new.wex = 1;
+            new.wid = 8;
+        }
+        new
+    }
+
+    pub fn pos(&mut self, val: u32) -> &mut Self {
+        let mut new = self;
+        new.pos = if val > 1023 { 1023 } else { val };
+        new
+    }
+}
+
+#[derive(Default)]
+pub struct Channels {
+    pub ch1: Channel, 
+    pub ch2: Channel
+}
+
+impl Channels {
+    fn nchans(&self) -> u32 {
+        self.ch1.en as u32 + self.ch2.en as u32
+    }
+
+    fn nbits(&self) -> u32 {
+        let wid1: u32 = if self.ch1.en { self.ch1.wid } else { 0 };
+        let wid2: u32 = if self.ch2.en { self.ch2.wid } else { 0 };
+        if wid1 > wid2 { wid1 } else { wid2 }
+    }
+}
+
+#[derive(Default)]
+pub struct Params {
+    pub rx: Channels,
+    pub tx: Channels,
+    rxon:   bool, //Receieve on.
+    txon:   bool, //Transmit on.
+    fsm:    bool, //Frame master
+    clkm:   bool, //Clock master
+    flen:   u32,  //Length of frame in clocks.
+    fslen:  u32,  //Length of first half of frame in clocks.
+    smplrt: u32   //Sample rate in samples per second.
+}
+
+impl Params {
+    pub fn rxon(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.rxon = val;
+        new
+    }
+
+    pub fn txon(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.txon = val;
+        new
+    }
+
+    pub fn fs_master(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.fsm = val;
+        new
+    }
+
+    pub fn clk_master(&mut self, val: bool) -> &mut Self {
+        let mut new = self;
+        new.clkm = val;
+        new
+    }
+
+    pub fn chlen(&mut self, ch1: u32, ch2: u32) -> &mut Self {
+        let mut new = self;
+        new.flen = ch1 + ch2;
+        new.fslen = ch1;
+        new
+    }
+    
+    pub fn smplrt(&mut self, smplrt: u32) -> &mut Self {
+        let mut new = self;
+        new.smplrt = smplrt;
+        new
+    }
+    
+    fn nchans(&self) -> u32 {
+        let rx = self.rx.nchans();
+        let tx = self.tx.nchans();
+        if rx > tx { rx } else { tx }
+    }
+
+    fn nbits(&self) -> u32 {
+        let rx = self.rx.nbits();
+        let tx = self.tx.nbits();
+        if rx > tx { rx } else { tx }
+    }
+}
+
 
 /**********************************************************************
  * PCM
@@ -349,155 +490,33 @@ const PCM_BASE:    u32 = MMIO_BASE + PCM_OFFSET;
 #[repr(C)]
 pub struct RegisterBlockPCM {
 ///CS_A control and status. Offset 0x0.
-    CS_A:       ReadWrite<u32, CS_A::Register>,
+    pub CS_A:       ReadWrite<u32, CS_A::Register>,
 
 ///FIFO Buffer. Offset 0x4.
-    FIFO_A:     ReadWrite<u32, FIFO_A::Register>,
+    pub FIFO_A:     ReadWrite<u32, FIFO_A::Register>,
 
 ///Mode. Offset 0x8.
-    MODE_A:     ReadWrite<u32, MODE_A::Register>,
+    pub MODE_A:     ReadWrite<u32, MODE_A::Register>,
 
 ///Receive configuration. Offset 0xC.
-    RXC_A:      ReadWrite<u32, RXC_A::Register>,
+    pub RXC_A:      ReadWrite<u32, RXC_A::Register>,
 
 ///Transmit configuration. Offset 0x10.
-    TXC_A:      ReadWrite<u32, TXC_A::Register>,
+    pub TXC_A:      ReadWrite<u32, TXC_A::Register>,
 
 ///DMA Request level. Offset 0x14.
-    DREQ_A:     ReadWrite<u32, DREQ_A::Register>,
+    pub DREQ_A:     ReadWrite<u32, DREQ_A::Register>,
 
 ///Interupt enable. Offset 0x18.
-    INTEN_A:    ReadWrite<u32, INTEN_A::Register>,
+    pub INTEN_A:    ReadWrite<u32, INTEN_A::Register>,
 
 ///Interrupt status and clear. Offset 0x1C.
-    INTSTC_A:   ReadWrite<u32, INTSTC_A::Register>,
+    pub INTSTC_A:   ReadWrite<u32, INTSTC_A::Register>,
 
 ///Gray mode control. Offset 0x20.
-    GRAY:       ReadWrite<u32, GRAY::Register>
+    pub GRAY:       ReadWrite<u32, GRAY::Register>
 }
 
-
-///
-/// PCM Parameters
-///
-#[derive(Default)]
-pub struct Channel {
-    en:  bool, //Channel enable.
-    wid: u32,  //Bit depth.
-    wex: u32,  //Bit extend for >24 bit samples.
-    pos: u32,  //Position in frame.
-}
-
-impl Channel {
-    pub fn enable(&mut self, val: bool) -> &mut Self {
-        let mut new = self;
-        new.en = val;
-        new
-    }
-
-    pub fn width(&mut self, val: u32) -> &mut Self {
-        let mut new = self;
-        if val <= 8 {         //8 bit.
-            new.wid = 0x0; 
-        } else if val <= 16 { //16 bit.
-            new.wid = 0x8;
-        } else if val <= 24 { //24 bit.
-            new.wid = 0xF;
-        } else {              //32 bit.
-            new.wex = 1;
-            new.wid = 8;
-        }
-        new
-    }
-
-    pub fn pos(&mut self, val: u32) -> &mut Self {
-        let mut new = self;
-        new.pos = if val > 1023 { 1023 } else { val };
-        new
-    }
-}
-
-#[derive(Default)]
-pub struct Channels {
-    pub ch1: Channel, 
-    pub ch2: Channel
-}
-
-impl Channels {
-    fn nchans(&self) -> u32 {
-        self.ch1.en as u32 + self.ch2.en as u32
-    }
-
-    fn nbits(&self) -> u32 {
-        let wid1: u32 = if self.ch1.en { self.ch1.wid } else { 0 };
-        let wid2: u32 = if self.ch2.en { self.ch2.wid } else { 0 };
-        if wid1 > wid2 { wid1 } else { wid2 }
-    }
-}
-
-#[derive(Default)]
-pub struct PCMParams {
-    pub rx: Channels,
-    pub tx: Channels,
-    rxon:   bool, //Receieve on.
-    txon:   bool, //Transmit on.
-    fsm:    bool, //Frame master
-    clkm:   bool, //Clock master
-    flen:   u32,  //Length of frame in clocks.
-    fslen:  u32,  //Length of first half of frame in clocks.
-    smplrt: u32   //Sample rate in samples per second.
-}
-
-impl PCMParams {
-    pub fn rxon(&mut self, val: bool) -> &mut Self {
-        let mut new = self;
-        new.rxon = val;
-        new
-    }
-
-    pub fn txon(&mut self, val: bool) -> &mut Self {
-        let mut new = self;
-        new.txon = val;
-        new
-    }
-
-    pub fn fs_master(&mut self, val: bool) -> &mut Self {
-        let mut new = self;
-        new.fsm = val;
-        new
-    }
-
-    pub fn clk_master(&mut self, val: bool) -> &mut Self {
-        let mut new = self;
-        new.clkm = val;
-        new
-    }
-
-    pub fn chlen(&mut self, ch1: u32, ch2: u32) -> &mut Self {
-        let mut new = self;
-        new.flen = ch1 + ch2;
-        new.fslen = ch1;
-        new
-    }
-    
-    pub fn smplrt(&mut self, smplrt: u32) -> &mut Self {
-        let mut new = self;
-        new.smplrt = smplrt;
-        new
-    }
-    
-    fn nchans(&self) -> u32 {
-        let rx = self.rx.nchans();
-        let tx = self.tx.nchans();
-        if rx > tx { rx } else { tx }
-    }
-
-    fn nbits(&self) -> u32 {
-        let rx = self.rx.nbits();
-        let tx = self.tx.nbits();
-        if rx > tx { rx } else { tx }
-    }
-}
 
 ///
 /// PCM peripheral registers
@@ -513,29 +532,7 @@ impl ops::Deref for PCM {
     }
 }
 
-impl PCM {
-    fn ptr() -> *const RegisterBlockPCM {
-        PCM_BASE as *const _
-    }
-
-///
-///PCM provides a SYNC bit that echoes back the written value after 2 clocks.
-///Return after clks / 2 periods have elapsed.
-///FIXME: This doesn't work right. Don't use.
-///
-    pub fn sync(&self, clks: usize) {
-        debug::out("pcm.sync(): Start sync.\r\n");
-        for _ in 0..(clks / 2) {
-            self.CS_A.modify (CS_A::SYNC::SET);
-            while !self.CS_A.is_set(CS_A::SYNC) {}
-        }
-        debug::out("pcm.sync(): End sync.\r\n");
-    }
-
-    fn wait_1sec() {
-        Timer1::default().one_shot(1_000_000);
-    }
-
+impl I2S for PCM {
 ///
 ///Load the provided configuration.
 ///
@@ -546,7 +543,7 @@ impl PCM {
 ///Reference
 /// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
 ///
-    pub fn load(&self, params: &PCMParams) {
+    fn load(&self, params: &Params) {
         debug::out("pcm.load(): Loading parameters.\r\n");
 
 //Disable PCM and clear CS_A register.
@@ -573,29 +570,41 @@ impl PCM {
 //Configure receive.
         self.RXC_A.modify (
 //Channel 1
-            RXC_A::CH1WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
-            RXC_A::CH1EN.val(params.rx.ch1.en as u32) + //Enable channel 1.
+//            RXC_A::CH1WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
+            RXC_A::CH1WEX::CLEAR      + //24bit >= sample size.
+//            RXC_A::CH1EN.val(params.rx.ch1.en as u32) + //Enable channel 1.
+            RXC_A::CH1EN::SET + //Enable channel 1.
             RXC_A::CH1POS.val(params.rx.ch1.pos)      + //0 based index data position in frame.
-            RXC_A::CH1WID.val(params.rx.ch1.wid)      + //Sample width in bits.
+//            RXC_A::CH1WID.val(params.rx.ch1.wid)      + //Sample width in bits.
+            RXC_A::CH1WID.val(0xF) +
 //Channel 2
-            RXC_A::CH2WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
-            RXC_A::CH2EN.val(params.rx.ch2.en as u32) + //Enable channel 2.
+//            RXC_A::CH2WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
+            RXC_A::CH2WEX::CLEAR      + //24bit >= sample size.
+            RXC_A::CH2EN::SET + //Enable channel 2.
+//            RXC_A::CH2EN.val(params.rx.ch2.en as u32) + //Enable channel 2.
             RXC_A::CH2POS.val(params.rx.ch2.pos)      + //0 based index data position in frame.
-            RXC_A::CH2WID.val(params.rx.ch2.wid)        //Sample width in bits.
+//            RXC_A::CH2WID.val(params.rx.ch2.wid)        //Sample width in bits.
+            RXC_A::CH2WID.val(0xF)        //Sample width in bits.
         );
 
 //Configure transmit.
         self.TXC_A.modify (
 //Channel 1
-            TXC_A::CH1WEX.val(params.tx.ch1.wex)      + //24bit >= sample size.
-            TXC_A::CH1EN.val(params.tx.ch1.en as u32) + //Enable channel 1.
+//            TXC_A::CH1WEX.val(params.tx.ch1.wex)      + //24bit >= sample size.
+            TXC_A::CH1WEX::CLEAR      + //24bit >= sample size.
+//            TXC_A::CH1EN.val(params.tx.ch1.en as u32) + //Enable channel 1.
+            TXC_A::CH1EN::SET + //Enable channel 1.
             TXC_A::CH1POS.val(params.tx.ch1.pos)      + //0 based index data position in frame.
-            TXC_A::CH1WID.val(params.tx.ch1.wid)      + //Sample width in bits.
+//            TXC_A::CH1WID.val(params.tx.ch1.wid)      + //Sample width in bits.
+            TXC_A::CH1WID.val(0xF)      + //Sample width in bits.
 //Channel 2
-            TXC_A::CH2WEX.val(params.tx.ch2.wex)      + //24bit >= sample size.
-            TXC_A::CH2EN.val(params.tx.ch2.en as u32) + //Enable channel 2.
+//            TXC_A::CH2WEX.val(params.tx.ch2.wex)      + //24bit >= sample size.
+            TXC_A::CH2WEX::CLEAR      + //24bit >= sample size.
+//            TXC_A::CH2EN.val(params.tx.ch2.en as u32) + //Enable channel 2.
+            TXC_A::CH2EN::SET + //Enable channel 1.
             TXC_A::CH2POS.val(params.tx.ch2.pos)      + //0 based index data position in frame.
-            TXC_A::CH2WID.val(params.tx.ch2.wid)        //Sample width in bits.
+//            TXC_A::CH2WID.val(params.tx.ch2.wid)        //Sample width in bits.
+            TXC_A::CH2WID.val(0xF)      //Sample width in bits.
         );
 
 //Set mode. 
@@ -656,6 +665,31 @@ impl PCM {
             self.CS_A.modify (CS_A::RXON::CLEAR);
         }
     }
+}
+
+impl PCM {
+    fn ptr() -> *const RegisterBlockPCM {
+        PCM_BASE as *const _
+    }
+
+///
+///PCM provides a SYNC bit that echoes back the written value after 2 clocks.
+///Return after clks / 2 periods have elapsed.
+///FIXME: This doesn't work right. Don't use.
+///
+    pub fn sync(&self, clks: usize) {
+        debug::out("pcm.sync(): Start sync.\r\n");
+        for _ in 0..(clks / 2) {
+            self.CS_A.modify (CS_A::SYNC::SET);
+            while !self.CS_A.is_set(CS_A::SYNC) {}
+        }
+        debug::out("pcm.sync(): End sync.\r\n");
+    }
+
+    fn wait_1sec() {
+        Timer1::default().one_shot(1_000_000);
+    }
+
 
     fn poll_rx_error(&self) -> Result<(), ERROR> {
         let cs = self.CS_A.extract();
@@ -676,7 +710,7 @@ impl PCM {
 ///
 ///Write the interupt status register contents to debug.
 ///
-    fn print_int_status(&self) {
+    pub fn print_int_status(&self) {
         let intstc = self.INTSTC_A.extract();
         debug::out("          10987654321098765432109876543210\r\n");
         debug::out("INTSTC_A: ");
@@ -692,7 +726,7 @@ impl PCM {
 ///
 ///Write the status bits to debug.
 ///
-    fn print_status(&self) {
+    pub fn print_status(&self) {
         let cs = self.CS_A.extract();
 
         debug::out("      10987654321098765432109876543210\r\n");
@@ -770,57 +804,7 @@ impl PCM {
 }
 
 /**********************************************************************
- * I2S
- *********************************************************************/
-
-pub trait I2S {
-    fn init();
-    fn load(&self, params: &PCMParams);
-    fn print_status(&self);
-    fn tx_on(&self, val: bool);
-    fn rx_on(&self, val: bool);
-    fn tx_fill(&self, val: u32);
-    fn tx_write_val(&self, val: u32, num: usize) -> u32;
-}
-
-/**********************************************************************
  * I2S0
  *********************************************************************/
 
-#[derive(Default)]
-pub struct I2S0;
-
-impl I2S for I2S0 {
-    fn init() {
-        debug::out("i2s0.init(): Initializing I2S.\r\n");
-        GPFSEL::default().fsel_i2s();  //Select the GPIO pins for I2S.
-        debug::out("i2s0.init(): I2S initialized.\r\n");
-    }
-
-///
-///Load parameters.
-///
-    fn load(&self, params: &PCMParams) {
-        PCM::default().load(params);
-    }
-    
-    fn print_status(&self) {
-        PCM::default().print_status();
-    }
-    
-    fn tx_on(&self, val: bool) {
-        PCM::default().tx_on(val);
-    }
-    
-    fn rx_on(&self, val: bool) {
-        PCM::default().rx_on(val);
-    }
-
-    fn tx_fill(&self, val: u32) {
-        PCM::default().tx_fill(val);
-    }
-
-    fn tx_write_val(&self, val: u32, num: usize) -> u32 {
-        return PCM::default().tx_write_val(val,num);
-    }
-}
+pub type I2S0 = PCM;
