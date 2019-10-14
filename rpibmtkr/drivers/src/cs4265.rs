@@ -155,17 +155,19 @@ register_bitfields! {
 ///Digital loopback.
         LOOP OFFSET(1) NUMBITS(1) []
     ],
-///Programmable gain amplifier Channel B register. -12dB..12dB. I2C address 0x07.
+///Programmable gain amplifier Channel B register. I2C address 0x07.
     PGAB [
 ///Set this bit for 1/2 dB.
         HALF OFFSET(0) NUMBITS(1) [],
-///Two's complement -12dB..12dB.
-        WHOLE OFFSET(1) NUMBITS(5) []
+///Two's complement integer value -12dB..12dB.
+        INT OFFSET(1) NUMBITS(5) []
     ],
 ///Programmable gain amplifier Channel A register. I2C address 0x08.
     PGAA [
-///Gain
-        GAIN OFFSET(0) NUMBITS(6) []
+///Set this bit for 1/2 dB.
+        HALF OFFSET(0) NUMBITS(1) [],
+///Two's complement integer value -12dB..12dB.
+        INT OFFSET(1) NUMBITS(5) []
     ],
 ///Analog input control register. I2C address 0x09.
     AICTL [
@@ -183,11 +185,21 @@ register_bitfields! {
     ],
 ///DAC volume channel A register. I2C address 0x0A.
     DACVOLA [
-        VOL OFFSET(0) NUMBITS(8) []
+//Volume reduction in 1/2 dB increments (0..255)
+        VOL OFFSET(0) NUMBITS(8) [],
+///Set this bit for 1/2 dB.
+        HALF OFFSET(0) NUMBITS(1) [],
+///Two's complement integer value 0dB..-127dB.
+        INT OFFSET(1) NUMBITS(7) []
     ],
 ///DAC volume channel B register. I2C address 0x0B.
     DACVOLB [
-        VOL OFFSET(0) NUMBITS(8) []
+//Volume reduction in 1/2 dB increments (0..255)
+        VOL OFFSET(0) NUMBITS(8) [],
+///Set this bit for 1/2 dB.
+        HALF OFFSET(0) NUMBITS(1) [],
+///Integer value 0dB..-127dB.
+        INT OFFSET(1) NUMBITS(7) []
     ],
 ///DAC Control register 2. I2C address 0x0C.
     DACCTL2 [
@@ -476,7 +488,11 @@ impl <I> CS4265<I> where
 ///
     pub fn modify_clk(&self, fs_hz: u32, mclk_hz: u32) -> Result<(), ERROR> {
         if mclk_hz == 12_288_000 {
-            if fs_hz == 32_000 {
+            if fs_hz == 0 { //Set to lowest possible speed.
+                debug::out("cs4265.modify_clk(): SINGLE_SPEED_4_50_KHZ & DIV4_0.\r\n");
+                self.reg.ADCCTL.modify(ADCCTL::FM::SINGLE_SPEED_4_50_KHZ);
+                self.reg.MCLK.modify(MCLK::DIV::DIV4_0);
+            } else if fs_hz == 32_000 {
                 debug::out("cs4265.modify_clk(): SINGLE_SPEED_4_50_KHZ & DIV1_5.\r\n");
                 self.reg.ADCCTL.modify(ADCCTL::FM::SINGLE_SPEED_4_50_KHZ);
                 self.reg.MCLK.modify(MCLK::DIV::DIV1_5);
@@ -599,7 +615,7 @@ impl <I> CS4265<I> where
         
         for i in (RegisterAddress::POWERCTL as usize) - 1..cur.data.len() {
             debug::out("cs4265.verify(): ");
-            debug::u8bits((i + 1) as u8);
+            debug::u8hex((i + 1) as u8);
             if self.reg.data[i] != cur.data[i] {
                 debug::out(" Bad  - ");
             } else {
