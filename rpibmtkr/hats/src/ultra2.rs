@@ -365,7 +365,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 ///
     fn cfg_i2s(&self) -> Result<(), ERROR> {
         debug::out("ultra2.cfg_i2s(): Configuring RPi i2s.\r\n");
-        let mut pcm = i2s::PCMParams::default();
+        let mut pcm = i2s::Params::default();
 
         pcm.rxon(!self.pdn_adc). //rxon is the opposite of power down
             txon(!self.pdn_dac).
@@ -420,7 +420,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
             cs4265::ADCCTL::ADC_DIF::I2S24BIT         + //Use I2S protocol.
             cs4265::ADCCTL::HPFFREEZE::CLEAR          + //Leave the dc bias filter unfrozen.
             cs4265::ADCCTL::MUTEADC::CLEAR            + //Unmuted.
-            cs4265::ADCCTL::MS::CLEAR                   //Set to slave. FIXME: Speakers hum if this isn't clear.
+            cs4265::ADCCTL::MS::SET                     //Set to master. FIXME: Speakers hum if this isn't clear.
         );
 
 //Set clock for sample rate and Ultra2 board's clock rate (12.288 MHz).
@@ -445,9 +445,9 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
             cs4265::AICTL::SELECT::LINE     //Line level.
         );
 
-//Full volume.
-        self.cs4265.reg.DACVOLA.set(self.dacvola);
-        self.cs4265.reg.DACVOLB.set(self.dacvolb);
+//Volume.
+        self.cs4265.reg.DACVOLA.write(cs4265::DACVOLA::VOL.val(self.dacvola));
+        self.cs4265.reg.DACVOLB.write(cs4265::DACVOLB::VOL.val(self.dacvolb));
 
 //Set soft ramp, zero crossing detection and invert.
         self.cs4265.reg.DACCTL2.modify ( //FIXME: Possible anomaly Bit 0 is reserved and set - different from datasheet.
