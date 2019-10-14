@@ -32,13 +32,15 @@ use core::panic::PanicInfo;
 use peripherals::{
     debug, 
     uart::Uart0,
-    i2s::{I2S, I2S0},
+    i2s::{I2S, I2S0, CS_A},
     i2c::{I2C, I2C1},
     timer::{Timer1}
 };
 use hats::ultra2::Ultra2;
 
-mod startup; //Pull in startup code.
+#[allow(unused_imports)]
+use startup; //Pull in startup code.
+
 
 /// 
 /// Rust requires a panic handler. On panic go into an infinite loop.
@@ -61,7 +63,6 @@ fn main() -> ! {
     I2C1::init();
     I2S0::init(); 
 
-    
 //Write a bunch of dots to mark boot.
     debug::out("\r\n");
     for _ in 0..72 { debug::out(".") }
@@ -76,7 +77,7 @@ fn main() -> ! {
 //Set up Ultra2 hat.
     ultra2.freeze(false).
            pdn_mic(true).   //Power down microphone.
-           pdn_adc(true).   //Power down ADC.
+           pdn_adc(false).  //Use ADC.
            pdn_dac(false).  //Use DAC
            dac_vol_a(0xFF). //Full volume.
            dac_vol_b(0xFF). //Full volume.
@@ -112,28 +113,49 @@ fn main() -> ! {
 
     i2s.print_status();
 
-//    debug::out("main(): Output square wave indefinitely.\r\n");
-//Write square wave.
-    debug::out("main(): Write square wave.\r\n");
-    let mut e: u32 = 0;
-    for _ in 0..(48_000 / 218) {
-//            debug::out("main(): HERE2!\r\n");
-        e = i2s.tx_write_val(0x00080000, 109);
-        if e > 0 {
-            debug::out("!"); //Error detected.
-//            debug::u32bits(e);
-        }
-//            debug::out("main(): HERE3!\r\n");
-        e = i2s.tx_write_val(0x00080001, 109);
-        if e > 0 {
-            debug::out("!"); //Error detected.
-//            debug::u32bits(e);
-        }
-//            debug::out("main(): HERE4!\r\n");
-    }
-    debug::out("main(): Square wave written.\r\n");
+// //    debug::out("main(): Output square wave indefinitely.\r\n");
+// //Write square wave.
+//     debug::out("main(): Write square wave.\r\n");
+//     let mut e: u32 = 0;
+//     for _ in 0..(48_000 / 218) {
+// //            debug::out("main(): HERE2!\r\n");
+//         e = i2s.tx_write_val(0xFAFAFAFA, 109);
+//         if e > 0 {
+//             debug::out("!"); //Error detected.
+// //            debug::u32bits(e);
+//         }
+// //            debug::out("main(): HERE3!\r\n");
+//         e = i2s.tx_write_val(0xCACACACA, 109);
+//         if e > 0 {
+//             debug::out("!"); //Error detected.
+// //            debug::u32bits(e);
+//         }
+// //            debug::out("main(): HERE4!\r\n");
+//     }
+//     debug::out("main(): Square wave written.\r\n");
 
+    debug::out("Beginning main loop.\r\n");
+//    let timer = Timer1::default();
+    let mut i: usize = 0;
+    let mut pcm: u32 = 0xFAF00000;
     loop {
-//        debug::out(".");
+        while i2s.CS_A.is_set(CS_A::TXD) {
+            i2s.FIFO_A.set ( pcm );
+            i += 1;
+            if i == 10000 {
+                pcm = 0x00000000;
+            } else if i == 20000 {
+                //debug::out(".\r\n");
+                pcm = 0xFAF00000;
+                i = 0;
+            }
+        }
+/*
+        
+        for _ in 0..96000 {
+        }
+        i2s.FIFO_A.set ( 0x00000000 );
+        i2s.print_status();
+        ultra2.cs4265.verify_regs();*/
     }
 }

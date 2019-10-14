@@ -32,10 +32,11 @@ use core::panic::PanicInfo;
 use peripherals::{
     debug, 
     uart::Uart0,
-    i2s::{I2S, I2S0, PCMParams},
+    i2s::{I2S, I2S0, Params},
 };
 
-mod startup; //Pull in startup code.
+#[allow(unused_imports)]
+use startup; //Pull in startup code.
 
 /// 
 /// Rust requires a panic handler. On panic go into an infinite loop.
@@ -64,7 +65,7 @@ fn main() -> ! {
 
 //Allocate structures.
     let i2s     = I2S0::default();      //I2S accessor.
-    let mut pcm = PCMParams::default(); //Parameter structure to configure the 
+    let mut pcm = Params::default(); //Parameter structure to configure the 
                                         //Broadcom PCM peripheral which implements i2s. 
 
 //Configure the parameters.
