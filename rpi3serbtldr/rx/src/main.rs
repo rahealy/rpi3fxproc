@@ -27,9 +27,10 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 ///
 /// * `uart` - initialized uart
 ///
-fn send_break_signal(uart: &Uart0, sig: u8) -> () {
+#[inline]
+fn send_break_signal(uart: &Uart0) -> () {
     for _ in 0..3 {
-        uart.send(sig as char);
+        uart.send(0x03 as char);
     }
 }
 
@@ -41,6 +42,7 @@ fn send_break_signal(uart: &Uart0, sig: u8) -> () {
 ///
 /// * `uart` - initialized uart
 ///
+#[inline]
 fn get_le_u32(uart: &Uart0) -> (u32) {
     let mut fsize: u32 = u32::from(uart.getc());
     fsize |= u32::from(uart.getc()) << 8;
@@ -57,6 +59,7 @@ fn get_le_u32(uart: &Uart0) -> (u32) {
 ///
 /// * `uart` - initialized uart
 ///
+#[inline]
 fn send_ok(uart: &Uart0) -> () {
     uart.send('O');
     uart.send('K');
@@ -64,22 +67,24 @@ fn send_ok(uart: &Uart0) -> () {
 
 
 ///
-/// Send SE (Size Exceeded).
+/// Send ER (Error).
 ///
 /// #Arguments
 ///
 /// * `uart` - initialized uart
 ///
-fn send_size_exceeded(uart: &Uart0) -> () {
-    uart.send('S');
+#[inline]
+fn send_error(uart: &Uart0) -> () {
     uart.send('E');
+    uart.send('R');
 }
 
+
 enum State {
-    BREAK,
     POLL,
     JTAG,
-    DATA,
+    LOAD,
+    JUMP,
     WAIT
 }
 
@@ -90,39 +95,43 @@ enum State {
 fn main() -> ! {    
     Uart0::init();
 
-    let mut state = State::BREAK;
     let uart = Uart0::default();
     let gpfsel = GPFSEL::default();
+    let lodptr: *mut u8 = 0x80000 as *mut u8;
+    let mut state = State::POLL;
 
 //Hello world.
     uart.puts("rpiserbtldr_rx\r\n");
     for _ in 0..50 { uart.send('.'); }
     uart.puts("\r\n");
 
+//Let tx know we're ready.
+    send_break_signal(&uart);
+
 //State machine.
     loop {
         match state {
-            State::BREAK => { //Let tx know we're ready.
-                send_break_signal(&uart, 0x03);
-                state = State::POLL;
-            },
-
             State::POLL => { //Wait for instructions.
-                let i = get_le_u32(&uart);
-                match i {
+                match get_le_u32(&uart) {
                     0x4A544147 => { //'J','T','A','G'
                         state = State::JTAG;
                     },
 
-                    0x44415441 => { //'D','A','T','A'
-                        state = State::DATA;
+                    0x4C4F4144 => { //'L','O','A','D'
+                        state = State::LOAD;
+                    },
+
+                    0x4A554D50 => { //'J','U','M','P'
+                        state = State::JUMP;
                     },
 
                     0x57414954 => { //'W','A','I','T'
                         state = State::WAIT;
                     },
 
-                    _ => {}
+                    _ => {
+                        send_error(&uart);
+                    }
                 }
             },
 
@@ -132,35 +141,30 @@ fn main() -> ! {
                 send_ok(&uart);
             },
 
-            State::DATA => { //Load code and execute.
+            State::LOAD => { //Load code and execute.
 //Get pending data size in bytes from tx.
                 let sz = get_le_u32(&uart);
-                if sz < 500000000 { //500MB seems okay, no? 
-                    send_ok(&uart);
+                if sz > 500000000 { //500MB seems okay, no? 
+                    send_error(&uart);
                 } else {
-                    send_size_exceeded(&uart);
-                    panic!();
-                }
-
-//Load tx'd data into memory starting at 0x80000
-                let lodptr: *mut u8 = 0x80000 as *mut u8;
-                unsafe {
-                    for i in 0..sz {
-                        *lodptr.offset(i as isize) = uart.getu8();
+//Load tx'd data into memory.
+                    send_ok(&uart);
+                    unsafe {
+                        for i in 0..sz {
+                            *lodptr.offset(i as isize) = uart.getu8();
+                        }
                     }
+                    send_ok(&uart);
                 }
 
-                send_ok(&uart);
+                state = State::POLL;
+            },
 
+            State::JUMP => {
 //Jump to loaded code. Byeee!
-                uart.puts("Jumping to loaded code.\r\n");
-                for _ in 0..50 { uart.send('.'); } //Adds a bit of delay.
-                uart.puts("\r\n");
-
                 let jmplod: extern "C" fn() -> ! = unsafe {
                     core::mem::transmute(lodptr as *const ())
                 };
-
                 jmplod();
             },
 

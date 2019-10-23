@@ -121,9 +121,12 @@ fn main() {
                     } else {
                         match File::open(file_name) {
                             Ok(mut file) => {
-                                if let Err(_) = send_data(&mut file, &mut port) {
+                                if let Err(_) = send_load(&mut file, &mut port) {
                                     eprintln!("Failed to send data.");
                                 } else {
+                                    if let Err(_) = send_jump(&mut port) {
+                                        eprintln!("Failed to send jump.");
+                                    }
                                     read_and_echo(&mut port);
                                 }
                             },
@@ -139,7 +142,7 @@ fn main() {
                     eprintln!("Break signal not received. Error: {}", e);
                 }
             }
-        }
+        },
 
         Err(e) => {
             eprintln!("Failed to open port \"{}\". Error: {}", port_name, e);
@@ -155,8 +158,8 @@ fn main() {
 /// * `file` - an initialized and opened file.
 /// * `port` - an initialized and opened serial port to write to.
 ///
-fn send_data(file: &mut File, port: &mut PortType) -> Result <(),()> {
-    let instr: [u8;4] = serialize_u32((0x44415441 as u32).to_le()); //'D','A','T','A'
+fn send_load(file: &mut File, port: &mut PortType) -> Result <(),()> {
+    let instr: [u8;4] = serialize_u32((0x4C4F4144 as u32).to_le()); //'L','O','A','D'
 
     if let Err(e) = write_bytes(port, &instr) {
         eprintln!("Failed to send DATA instruction. Error: {}", e);
@@ -180,6 +183,19 @@ fn send_data(file: &mut File, port: &mut PortType) -> Result <(),()> {
 
     if let Err(e) = wait_for_ok_signal(port) {
         eprintln!("OK signal not received after sending file. Error: {}", e);
+        return Err(());
+    }
+
+    Ok(())
+}
+
+fn send_jump(port: &mut PortType) -> Result <(),()> {
+    let instr: [u8;4] = serialize_u32((0x4A554D50 as u32).to_le()); //'J','U','M','P'
+
+    eprintln!("Send JUMP instruction.");
+    
+    if let Err(e) = write_bytes(port, &instr) {
+        eprintln!("Failed to send JUMP instruction. Error: {}", e);
         return Err(());
     }
 
@@ -247,8 +263,7 @@ fn send_wait(port: &mut PortType) -> Result <(),()> {
 /// * `file` - an initialized and opened file.
 /// * `port` - an initialized and opened serial port to write to.
 ///
-fn send_file(file: &mut File, port: &mut PortType) -> Result <u32, Error> {
-    let mut crc: u32 = 0;
+fn send_file(file: &mut File, port: &mut PortType) -> Result <(), Error> {
     let mut buf: [u8; 1] = [0x00];
     let mut fbuf = Vec::new();
 
@@ -276,7 +291,7 @@ fn send_file(file: &mut File, port: &mut PortType) -> Result <u32, Error> {
         }
     }
 
-    return Ok(crc);  //FIXME: For now return zero for the CRC.
+    return Ok(());
 }
 
 ///
