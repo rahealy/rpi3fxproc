@@ -1,6 +1,11 @@
 /*
  * link.ld
  *  Linker script.
+ *    
+    .vectors ALIGN(2048) :
+    {
+        *(.vectors)
+    }
  */
 
 ENTRY(_boot);
@@ -24,7 +29,7 @@ SECTIONS
         *(.data .data.*)
     }
 
-    .bss ALIGN(8):
+    .bss ALIGN(8) :
     {
         __bss_start = .;
         *(.bss .bss.*)
