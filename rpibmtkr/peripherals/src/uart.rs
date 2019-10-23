@@ -392,6 +392,16 @@ impl Uart0 {
                       CR::RXE::SET);
     }
 
+    ///Poll for pending character.
+    pub fn poll_tx(&self) -> bool {
+        !self.FR.is_set(FR::TXFF)
+    }
+
+    ///Poll for pending character.
+    pub fn poll_rx(&self) -> bool {
+        !self.FR.is_set(FR::RXFE)
+    }
+
     /// Send a character
     pub fn send(&self, c: char) {
         // wait until we can send
@@ -407,6 +417,21 @@ impl Uart0 {
         self.DR.set(c as u32);
     }
 
+    /// Receive an unsigned 8-bit int.
+    pub fn getu8(&self) -> u8 {
+        // wait until something is in the buffer
+        loop {
+            if !self.FR.is_set(FR::RXFE) {
+                break;
+            }
+
+            asm::nop();
+        }
+
+        // read it and return
+        self.DR.get() as u8
+    }
+    
     /// Receive a character
     pub fn getc(&self) -> char {
         // wait until something is in the buffer
@@ -442,7 +467,7 @@ impl Uart0 {
     }
 
     /// Display a binary value in hexadecimal
-    pub fn hex(&self, d: u32) {
+    pub fn hex32(&self, d: u32) {
         let mut n;
 
         for i in 0..8 {

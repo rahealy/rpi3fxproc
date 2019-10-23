@@ -21,10 +21,8 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- */ 
+ */
 
-#![deny(missing_docs)]
-#![deny(warnings)]
 
 /************************** Startup Code ******************************/
 
@@ -57,26 +55,8 @@ pub unsafe extern "C" fn rinit() -> ! {
     unsafe_main(); //Transition from unsafe 'C' to unsafe rust.
 }
 
-
-#[link_section = ".text.boot"]
-#[no_mangle]
-pub unsafe extern "C" fn _boot() -> ! {
-    use cortex_a::{asm, regs::*};
-
-    const CORE_0:      u64 = 0;
-    const CORE_MASK:   u64 = 0x3;
-    const STACK_START: u64 = 0x80_000;
-    const EL2:         u32 = CurrentEL::EL::EL2.value;
-
-    if (CORE_0 == MPIDR_EL1.get() & CORE_MASK) &&
-       (EL2 == CurrentEL.get())
-    {
-        SP.set(STACK_START);
-        rinit()
-    } else {
-        // if not core0, infinitely wait for events
-        loop {
-            asm::wfe();
-        }
-    }
-}
+//
+// Assembler in setup.S initializes the RPi hardware then jumps to the
+// unsafe 'C' style rinit() function above.
+//
+global_asm!(include_str!("setup.S"));

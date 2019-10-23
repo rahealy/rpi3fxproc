@@ -32,10 +32,11 @@ use core::panic::PanicInfo;
 use peripherals::{
     debug, 
     uart::Uart0,
-    i2s::{I2S, I2S0, PCM, PCMParams},
+    i2s::{I2S, I2S0, Params},
 };
 
-mod startup; //Pull in startup code.
+#[allow(unused_imports)]
+use startup; //Pull in startup code.
 
 /// 
 /// Rust requires a panic handler. On panic go into an infinite loop.
@@ -55,48 +56,52 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 fn main() -> ! {
     Uart0::init();
     debug::init();
+    I2S0::init();
 
 //Write a bunch of dots to mark boot.
     debug::out("\r\n");
     for _ in 0..72 { debug::out(".") }
     debug::out("\r\n");
 
-    I2S0::init();
+//Allocate structures.
+    let i2s     = I2S0::default();      //I2S accessor.
+    let mut pcm = Params::default(); //Parameter structure to configure the 
+                                        //Broadcom PCM peripheral which implements i2s. 
 
-//Test I2S functionality.
-    let i2s0 = I2S0::default();
-    let mut pcm  = PCMParams::default();
+//Configure the parameters.
+    pcm.rxon(true).        //PCM will receive data.
+        txon(true).        //PCM will transmit data.
+        fs_master(true).   //PCM is frame select master.
+        clk_master(true).  //PCM is clock master.
+        chlen(32,32).      //Each channel will be 32 bits for a frame length of 64 bits.
+        smplrt(8_000);     //Sample rate will be 8kHz
 
-    pcm.rxon(true).
-        txon(true).
-        smplrt(48_000_000).
-        fs_master(true).
-        clk_master(true).
-        chlen(32,32);  //CS4265 has a 64 bit frame length.
-
-    pcm.rx.ch1.enable(false).
+    pcm.rx.ch1.enable(true).
                 width(24). //Sample width is 24 bits.
                 pos(1);    //Sample data starts 1 clock after frame begins.
 
-    pcm.rx.ch2.enable(false).
+    pcm.rx.ch2.enable(true).
                 width(24). //Sample width is 24 bits.
-                pos(33);   //Data starts 33 clocks after frame begins.
+                pos(33);   //Sample data starts 33 clocks after frame begins.
 
     pcm.tx.ch1.enable(true).
                 width(24). //Sample width is 24 bits.
-                pos(1);    //Data starts 1 clock after frame begins.
+                pos(1);    //Sample data starts 1 clock after frame begins.
 
     pcm.tx.ch2.enable(true).
                 width(24). //Sample width is 24 bits.
-                pos(33);   //Data starts 33 clocks after frame begins.
+                pos(33);   //Sample data starts 33 clocks after frame begins.
 
-    i2s0.load(&pcm);
+//Load configuration.
+    i2s.load(&pcm);
 
-    if let Err(err) = PCM::default().tx_test() {
-        debug::out("Error while running tx_test(): ");
-        debug::out(err.msg());
-    }
+//Per datasheet fill the FIFO before enabling transmit.
+    i2s.tx_fill(0x00FAFAFA);
 
+//Print the state of the PCM status bits.
+    i2s.print_status();
+    
+    
     loop {
     }
 }

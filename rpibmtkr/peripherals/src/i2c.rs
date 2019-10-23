@@ -347,13 +347,15 @@ impl I2C for I2C1 {
         let len: usize = data.len();
         let mut i: usize = 0;
 
+//        debug::out("i2c.write(): Xfer begin.\r\n");
+
 //First byte of the FIFO is the slave device register address.
         if self.S.is_set(S::TA) {        //I2C is already in a transfer.
             return Err(ERROR::ACTIVE);
         }
     
 //Initialize i2c1
-        debug::out("i2c.write(): Init.\r\n");
+//        debug::out("i2c.write(): Init.\r\n");
         self.DLEN.set((len + 1) as u32); //Set data length including register address.
         self.A.set(addr as u32);         //Set the slave address.
         self.C.modify(C::READ::CLEAR);   //Clear READ bit.
@@ -382,14 +384,14 @@ impl I2C for I2C1 {
             while self.S.matches_all(S::TXD::SET + 
                                         S::TXW::SET) 
             {  //FIFO not full and needs writing.
-                debug::out(".");
+//                debug::out(".");
                 self.FIFO.set(data[i] as u32);
                 i += 1;
             }
         }
 
 //Wait for all bytes to be sent to slave.
-        debug::out("i2c.write(): Xfer finished. Poll until done.\r\n");
+        debug::out("i2c.write(): Xfer finished.\r\n"); // Poll until done.\r\n");
         return self.poll_done();
     }
 
@@ -397,15 +399,16 @@ impl I2C for I2C1 {
         let len: usize = data.len();
         let mut i: usize = 0;
 
+//        debug::out("i2c.read(): Xfer begin.\r\n");
 //Write the slave device register address to read from.
-        debug::out("i2c.read(): Write dest register.\r\n");
+//        debug::out("i2c.read(): Write dest register.\r\n");
         if let Err(err) = self.write(addr, reg, &[]) {
             return Err(err);
         }
 //        debug::out("i2c.read(): Dest register written.\r\n");
 
 //Initialize and read.
-        debug::out("i2c.read(): Reset and initialize.\r\n");
+//        debug::out("i2c.read(): Reset and initialize.\r\n");
         self.reset();
         self.DLEN.set(len as u32);       //Set data length including register address.
         self.A.set(addr as u32);         //Set the slave address.
@@ -423,12 +426,12 @@ impl I2C for I2C1 {
             }
 
             while self.S.is_set(S::RXD) { //Read until empty.
-                debug::out(".");
+//                debug::out(".");
                 data[i] = self.FIFO.get() as u8;
                 i += 1;
             }
         }
-        debug::out("i2c.read(): Xfer finished. Poll until done.\r\n");
+        debug::out("i2c.read(): Xfer finished.\r\n"); // Poll until done.\r\n");
         return self.poll_done();
     }
 }

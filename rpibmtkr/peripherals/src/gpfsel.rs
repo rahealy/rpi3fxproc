@@ -105,7 +105,50 @@ register_bitfields! {
 /// I/O Pin 40 (SDOUT)
         FSEL21 OFFSET(3) NUMBITS(3) [
             INPUT = 0b000,
+            OUTPUT = 0b001,
             PCM_DOUT = 0b100 // I2S - Alternate function 0
+        ],
+        
+///I/O Pin (ARM_TRST)
+        FSEL22 OFFSET(6) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TRST = 0b011 // JTAG - Alternate function 4
+        ],
+        
+///I/O Pin (ARM_RTCK)
+        FSEL23 OFFSET(9) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_RTCK = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TDO)
+        FSEL24 OFFSET(12) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TDO = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TCK)
+        FSEL25 OFFSET(15) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TCK = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TDI)
+        FSEL26 OFFSET(18) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TDI = 0b011 // JTAG - Alternate function 4
+        ],
+
+///I/O Pin (ARM_TMS)
+        FSEL27 OFFSET(21) NUMBITS(3) [
+            INPUT = 0b000,
+            OUTPUT = 0b001,
+            ARM_TMS = 0b011 // JTAG - Alternate function 4
         ]
     ]
 }
@@ -124,9 +167,9 @@ const GPFSEL0_BASE:   u32 = MMIO_BASE + GPFSEL0_OFFSET;
 #[allow(non_snake_case)]
 #[repr(C)]
 pub struct RegisterBlockGPFSEL {
-    GPFSEL0: ReadWrite<u32, GPFSEL0::Register>, // 0x00200000
-    GPFSEL1: ReadWrite<u32, GPFSEL1::Register>, // 0x00200004
-    GPFSEL2: ReadWrite<u32, GPFSEL2::Register>  // 0x00200008
+    pub GPFSEL0: ReadWrite<u32, GPFSEL0::Register>, // 0x00200000
+    pub GPFSEL1: ReadWrite<u32, GPFSEL1::Register>, // 0x00200004
+    pub GPFSEL2: ReadWrite<u32, GPFSEL2::Register>  // 0x00200008
 }
 
 ///
@@ -163,17 +206,17 @@ impl GPFSEL {
 ///Select alternate GPIO pin functions for the I2S peripheral.
 ///
     pub fn fsel_i2s(&self) {
-        self.GPFSEL1.modify(GPFSEL1::FSEL18::INPUT + 
-                            GPFSEL1::FSEL19::INPUT);
+        self.GPFSEL1.modify(GPFSEL1::FSEL18::INPUT);
+        self.GPFSEL1.modify(GPFSEL1::FSEL18::PCM_CLK);
+        
+        self.GPFSEL1.modify(GPFSEL1::FSEL19::INPUT);
+        self.GPFSEL1.modify(GPFSEL1::FSEL19::PCM_FS);
 
-        self.GPFSEL1.modify(GPFSEL1::FSEL18::PCM_CLK + 
-                            GPFSEL1::FSEL19::PCM_FS);
+        self.GPFSEL2.modify(GPFSEL2::FSEL20::INPUT); 
+        self.GPFSEL2.modify(GPFSEL2::FSEL20::PCM_DIN);
 
-        self.GPFSEL2.modify(GPFSEL2::FSEL20::INPUT + 
-                            GPFSEL2::FSEL21::INPUT);
-
-        self.GPFSEL2.modify(GPFSEL2::FSEL20::PCM_DIN + 
-                            GPFSEL2::FSEL21::PCM_DOUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL21::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL21::PCM_DOUT);
     }
 
     pub fn fsel_uart0(&self) {
@@ -188,5 +231,25 @@ impl GPFSEL {
                             GPFSEL1::FSEL15::INPUT);
         self.GPFSEL1.modify(GPFSEL1::FSEL14::TXD1 + 
                             GPFSEL1::FSEL15::RXD1);
+    }
+
+    pub fn fsel_jtag(&self) {
+        self.GPFSEL2.modify(GPFSEL2::FSEL22::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL22::ARM_TRST);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL23::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL23::ARM_RTCK);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL24::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL24::ARM_TDO);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL25::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL25::ARM_TCK);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL26::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL26::ARM_TDI);
+
+        self.GPFSEL2.modify(GPFSEL2::FSEL27::INPUT);
+        self.GPFSEL2.modify(GPFSEL2::FSEL27::ARM_TMS);
     }
 }

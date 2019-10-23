@@ -36,9 +36,9 @@
 
 
 .section ".text.setup"
-.global _setup_rpi3
+.global _boot
 
-_setup_rpi3:
+_boot:
     // read cpu id, stop slave cores
     mrs     x1, mpidr_el1
     and     x1, x1, #3
@@ -50,7 +50,7 @@ _setup_rpi3:
 
     // relocate our code from load address to link address
     ldr     x1, =0x80000
-    ldr     x2, =_setup_rpi3
+    ldr     x2, =_boot
     ldr     w3, =__code_sz
 3:  ldr     x4, [x1], #8
     str     x4, [x2], #8
@@ -58,10 +58,10 @@ _setup_rpi3:
     cbnz    w3, 3b
 
     // set stack before our code
-    ldr     x1, =_setup_rpi3
+    ldr     x1, =_boot
     mov     sp, x1
 
     // jump to relocated Rust code, should not return
-    bl      rinit-2048
+    bl      rinit-4096
     // for failsafe, halt this core too
     b       1b

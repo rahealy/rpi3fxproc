@@ -36,7 +36,8 @@ use peripherals::debug;
 use peripherals::uart::Uart0;
 use peripherals::timer::{Timer, Timer1, Timer3};
 
-mod startup; //Pull in startup code.
+#[allow(unused_imports)]
+use startup; //Pull in startup code.
 
 /// 
 /// Rust requires a panic handler. On panic go into an infinite loop.
@@ -59,6 +60,8 @@ fn main() -> ! {
     
     let t1 = Timer1::default();
     let t3 = Timer3::default();
+
+    debug::out("\r\n");
 
     loop {
 //Exercise timer 1.

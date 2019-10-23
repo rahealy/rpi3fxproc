@@ -61,6 +61,16 @@ dependencies = [
  "peripherals 0.1.0",
  "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "register 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "startup 0.1.0",
+]
+
+[[package]]
+name = "startup"
+version = "0.1.0"
+dependencies = [
+ "cortex-a 2.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "register 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

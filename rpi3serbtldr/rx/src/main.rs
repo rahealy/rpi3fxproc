@@ -3,53 +3,13 @@
 #![feature(asm)]
 #![feature(global_asm)]
 
-
-/************************** Startup Code ******************************/
-
-///
-/// Transition from unsafe rust code to safe rust code in main() 
-/// function.
-///
-#[export_name = "unsafe_main"]
-pub unsafe fn __unsafe_main() -> ! { main(); }
-
-
-///
-/// Rust init. Zero the bss segment and transition to rust code.
-///
-#[no_mangle]
-pub unsafe extern "C" fn rinit() -> ! {
-    extern "C" { //Provided by linker
-        static mut __bss_start: u64;
-        static mut __bss_end: u64;
-    }
-
-    r0::zero_bss(&mut __bss_start, &mut __bss_end);
-
-//Transition from unsafe 'C' to unsafe rust.
-    extern "Rust" { fn unsafe_main() -> !; }
-    unsafe_main();
-}
-
- 
-//
-// Assembler in setup.S initializes the RPi hardware then jumps to the
-// unsafe 'C' style rinit() function.
-//
-global_asm!(include_str!("setup.S"));
-
-
-/************************** Main Code *********************************/
-
 use core::panic::PanicInfo;
+use peripherals::uart::Uart0;
+use peripherals::gpfsel::GPFSEL;
 
-const MMIO_BASE: u32 = 0x3F00_0000; //Used by gpio
+mod startup; //Pull in startup code.
 
-mod gpio;
-mod mbox;
-mod uart;
-
-///
+/// 
 /// Rust requires a panic handler. On panic go into an infinite loop.
 ///
 /// #Arguments
@@ -67,7 +27,8 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 ///
 /// * `uart` - initialized uart
 ///
-fn send_break_signal(uart: &uart::Uart) -> () {
+#[inline]
+fn send_break_signal(uart: &Uart0) -> () {
     for _ in 0..3 {
         uart.send(0x03 as char);
     }
@@ -81,7 +42,8 @@ fn send_break_signal(uart: &uart::Uart) -> () {
 ///
 /// * `uart` - initialized uart
 ///
-fn get_le_u32(uart: &uart::Uart) -> (u32) {
+#[inline]
+fn get_le_u32(uart: &Uart0) -> (u32) {
     let mut fsize: u32 = u32::from(uart.getc());
     fsize |= u32::from(uart.getc()) << 8;
     fsize |= u32::from(uart.getc()) << 16;
@@ -97,67 +59,119 @@ fn get_le_u32(uart: &uart::Uart) -> (u32) {
 ///
 /// * `uart` - initialized uart
 ///
-fn send_ok(uart: &uart::Uart) -> () {
+#[inline]
+fn send_ok(uart: &Uart0) -> () {
     uart.send('O');
     uart.send('K');
 }
 
 
 ///
-/// Send SE (Size Exceeded).
+/// Send ER (Error).
 ///
 /// #Arguments
 ///
 /// * `uart` - initialized uart
 ///
-fn send_size_exceeded(uart: &uart::Uart) -> () {
-    uart.send('S');
+#[inline]
+fn send_error(uart: &Uart0) -> () {
     uart.send('E');
+    uart.send('R');
 }
 
+
+enum State {
+    POLL,
+    JTAG,
+    LOAD,
+    JUMP,
+    WAIT
+}
 
 ///
 /// Receive code over serial port UART0 and execute.
 ///
-fn main() -> ! {
-    let mut mbox = mbox::Mbox::new();
-    let uart = uart::Uart::new();
+#[export_name = "main"] //So startup.rs can find fn main().
+fn main() -> ! {    
+    Uart0::init();
 
-    if uart.init(&mut mbox).is_err() {
-        panic!();
-    }
+    let uart = Uart0::default();
+    let gpfsel = GPFSEL::default();
+    let lodptr: *mut u8 = 0x80000 as *mut u8;
+    let mut state = State::POLL;
 
 //Hello world.
-    for c in "rpiserbtldr\r\n".chars() { 
-        uart.send(c); 
-    }
+    uart.puts("rpiserbtldr_rx\r\n");
+    for _ in 0..50 { uart.send('.'); }
+    uart.puts("\r\n");
 
-//Let tx know we're ready for data.
+//Let tx know we're ready.
     send_break_signal(&uart);
 
-//Get pending data size in bytes from tx.
-    let sz = get_le_u32(&uart);
-    if sz < 500000000 { //500MB seems okay, no? 
-        send_ok(&uart);
-    } else {
-        send_size_exceeded(&uart);
-        panic!();
-    }
+//State machine.
+    loop {
+        match state {
+            State::POLL => { //Wait for instructions.
+                match get_le_u32(&uart) {
+                    0x4A544147 => { //'J','T','A','G'
+                        state = State::JTAG;
+                    },
 
-//Load tx'd data into memory starting at 0x80000
-    let lodptr: *mut u8 = 0x80000 as *mut u8;
-    unsafe {
-        for i in 0..sz {
-            *lodptr.offset(i as isize) = uart.getc();
+                    0x4C4F4144 => { //'L','O','A','D'
+                        state = State::LOAD;
+                    },
+
+                    0x4A554D50 => { //'J','U','M','P'
+                        state = State::JUMP;
+                    },
+
+                    0x57414954 => { //'W','A','I','T'
+                        state = State::WAIT;
+                    },
+
+                    _ => {
+                        send_error(&uart);
+                    }
+                }
+            },
+
+            State::JTAG => { //Enable JTAG Pins.
+                gpfsel.fsel_jtag();
+                state = State::POLL;
+                send_ok(&uart);
+            },
+
+            State::LOAD => { //Load code and execute.
+//Get pending data size in bytes from tx.
+                let sz = get_le_u32(&uart);
+                if sz > 500000000 { //500MB seems okay, no? 
+                    send_error(&uart);
+                } else {
+//Load tx'd data into memory.
+                    send_ok(&uart);
+                    unsafe {
+                        for i in 0..sz {
+                            *lodptr.offset(i as isize) = uart.getu8();
+                        }
+                    }
+                    send_ok(&uart);
+                }
+
+                state = State::POLL;
+            },
+
+            State::JUMP => {
+//Jump to loaded code. Byeee!
+                let jmplod: extern "C" fn() -> ! = unsafe {
+                    core::mem::transmute(lodptr as *const ())
+                };
+                jmplod();
+            },
+
+            State::WAIT => { //Wait in an infinite loop.
+                send_ok(&uart);
+                loop {}
+            }
         }
     }
-
-    send_ok(&uart);
-
-//Jump to loaded code.
-    let jmplod: extern "C" fn() -> ! = unsafe { 
-        core::mem::transmute(lodptr as *const ()) 
-    };
-
-    jmplod();
 }

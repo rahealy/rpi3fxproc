@@ -13,9 +13,8 @@ type PortType = Box<dyn serialport::SerialPort>; //Easier than typing the whole 
 
 const NUM_RETRIES: u8 = 10; //Number of times to retry a port read/write operation.
 
-
 fn main() {
-    let matches = App::new("rpi3serbtldr_tx")
+    let matches = App::new("rpi3serbtldr_px")
         .about("Transmit a file via serial port to a rpi3serbtldr client.")
         .setting(AppSettings::DisableVersion)
         .arg(Arg::with_name("port")
@@ -35,20 +34,35 @@ fn main() {
              .short("f")
              .use_delimiter(false)
              .takes_value(true)
-             .required(true))
+             .required(false))
         .arg(Arg::with_name("timeout")
              .help("Time out in milliseconds eg. 2000 (two seconds)")
              .short("t")
              .use_delimiter(false)
              .takes_value(true)
              .required(false))
+        .arg(Arg::with_name("jtag")
+             .help("Signals target to initialize JTAG (if applicable)")
+             .short("j")
+             .use_delimiter(false)
+             .takes_value(false)
+             .required(false))
+        .arg(Arg::with_name("wait")
+             .help("Signals target to go into an infinite loop")
+             .short("w")
+             .use_delimiter(false)
+             .takes_value(false)
+             .required(false))
         .get_matches();
 
+        
 //Get values passed from command line or defaults
     let port_name = matches.value_of("port").unwrap();
     let baud_rate = matches.value_of("baud").unwrap_or("115200");
-    let file_name = matches.value_of("file").unwrap();
+    let mut file_name = matches.value_of("file").unwrap_or("");
     let time_out  = matches.value_of("timeout").unwrap_or("2000");
+    let jtag      = matches.is_present("jtag");
+    let wait      = matches.is_present("wait");    
     let mut settings: SerialPortSettings = Default::default();
 
 
@@ -68,6 +82,12 @@ fn main() {
         ::std::process::exit(1);
     }
 
+//Determine if wait and file are specified.
+    if wait {
+        file_name = "No file will be uploaded when wait (-w) command is provided.";        
+    }
+
+//Tell user what will happen.
     println!("");
     println!("rpi3serbtldr_tx");
     println!("---------------");
@@ -75,74 +95,163 @@ fn main() {
     println!("Port: \"{}\"", &port_name);
     println!("Baud: {}", &baud_rate);
     println!("Timeout(ms): {0}", &time_out);
+    println!("JTAG: {}", if jtag { "Yes" } else { "No" } );
+    println!("Wait: {}", if wait { "Yes" } else { "No" } );
     println!("");
     println!("Begin...");
 
-//Open file to send over serial port.
-    match File::open(file_name) {
-        Ok(mut file) => {
 //Open serial port.
-            match serialport::open_with_settings(&port_name, &settings) {
-                Ok(mut port) => {
+    match serialport::open_with_settings(&port_name, &settings) {
+        Ok(mut port) => {
 //Wait for remote port to transmit break signal.                    
-                    match wait_for_break_signal(&mut port) {
-                        Ok(()) => {
-//Send the size of the file to the remote port.                            
-                            match send_file_size(&mut file, &mut port) {
-                                Ok(_) => {
-//Wait for remote port to transmit OK signal.                                    
-                                    match wait_for_ok_signal(&mut port) {
-                                        Ok(_) => {
-//Send the contents of the file to the remote port.
-                                            match send_file(&mut file, &mut port) {
-                                                Ok(_crc) => {
-//Wait for the remote port to transmit OK signal.
-                                                    match wait_for_ok_signal(&mut port) {
-                                                        Ok(_) => {
-                                                            println!("File sent successfully. Read and echo replies.");
-                                                            read_and_echo(&mut port);
-                                                        }
-
-                                                        Err(e) => {
-                                                            eprintln!("Send file OK signal not received. Error: {}", e);
-                                                        }
-                                                    }
-                                                }
-
-                                                Err(e) => {
-                                                    eprintln!("Failed to send file. Error: {}", e);
-                                                }
-                                            }
-                                        }
-
-                                        Err(e) => {
-                                            eprintln!("OK signal not received. Error: {}", e);
-                                        }
-                                    }
-                                }
-
-                                Err(e) => {
-                                    eprintln!("Failed to send file size. Error: {}", e);
-                                }
-                            }
-                        },
-
-                        Err(e) => {
-                            eprintln!("Break signal not received. Error: {}", e);
+            match wait_for_break_signal(&mut port) {
+                Ok(()) => {
+                    if jtag {
+                        if let Err(_) = send_jtag(&mut port) {
+                            eprintln!("Failed to send jtag instruction.");
                         }
                     }
-                }
+                    
+                    if wait {
+                        if let Err(_) = send_wait(&mut port) {
+                            eprintln!("Failed to send wait instruction.");
+                        } else {
+                            read_and_echo(&mut port);
+                        }
+                    } else {
+                        match File::open(file_name) {
+                            Ok(mut file) => {
+                                if let Err(_) = send_load(&mut file, &mut port) {
+                                    eprintln!("Failed to send data.");
+                                } else {
+                                    if let Err(_) = send_jump(&mut port) {
+                                        eprintln!("Failed to send jump.");
+                                    }
+                                    read_and_echo(&mut port);
+                                }
+                            },
+
+                            Err(e) => {
+                                eprintln!("Failed to open file \"{}\". Error: {}", file_name, e);
+                            }
+                        }
+                    }
+                },
 
                 Err(e) => {
-                    eprintln!("Failed to open port \"{}\". Error: {}", port_name, e);
+                    eprintln!("Break signal not received. Error: {}", e);
                 }
             }
-        }
+        },
 
         Err(e) => {
-            eprintln!("Failed to open file \"{}\". Error: {}", file_name, e);
+            eprintln!("Failed to open port \"{}\". Error: {}", port_name, e);
         }
     }
+}
+
+///
+/// Send the contents of an open file over the port.
+///
+/// #Arguments
+///
+/// * `file` - an initialized and opened file.
+/// * `port` - an initialized and opened serial port to write to.
+///
+fn send_load(file: &mut File, port: &mut PortType) -> Result <(),()> {
+    let instr: [u8;4] = serialize_u32((0x4C4F4144 as u32).to_le()); //'L','O','A','D'
+
+    if let Err(e) = write_bytes(port, &instr) {
+        eprintln!("Failed to send DATA instruction. Error: {}", e);
+        return Err(());
+    }
+
+    if let Err(e) = send_file_size(file, port) {
+        eprintln!("Failed to send file size. Error: {}", e);
+        return Err(());
+    }
+
+    if let Err(e) = wait_for_ok_signal(port) {
+        eprintln!("OK signal not received after sending file size. Error: {}", e);
+        return Err(());
+    }
+
+    if let Err(e) = send_file(file, port) {
+        eprintln!("Failed to send file. Error: {}", e);
+        return Err(());
+    }
+
+    if let Err(e) = wait_for_ok_signal(port) {
+        eprintln!("OK signal not received after sending file. Error: {}", e);
+        return Err(());
+    }
+
+    Ok(())
+}
+
+fn send_jump(port: &mut PortType) -> Result <(),()> {
+    let instr: [u8;4] = serialize_u32((0x4A554D50 as u32).to_le()); //'J','U','M','P'
+
+    eprintln!("Send JUMP instruction.");
+    
+    if let Err(e) = write_bytes(port, &instr) {
+        eprintln!("Failed to send JUMP instruction. Error: {}", e);
+        return Err(());
+    }
+
+    Ok(())
+}
+
+
+///
+/// Send a JTAG signal over the port.
+///
+/// #Arguments
+///
+/// * `port` - an initialized and opened serial port to write to.
+///
+fn send_jtag(port: &mut PortType) -> Result <(),()> {
+    let instr: [u8;4] = serialize_u32((0x4A544147 as u32).to_le()); //'J','T','A','G'
+
+    eprintln!("Send JTAG instruction.");
+
+    if let Err(e) = write_bytes(port, &instr) {
+        eprintln!("Failed to send JTAG instruction. Error: {}", e);
+        return Err(());
+    }
+
+    if let Err(e) = wait_for_ok_signal(port) {
+        eprintln!("OK signal not received after sending JTAG instruction. Error: {}", e);
+        return Err(());
+    }
+    
+    Ok(())
+}
+
+
+///
+/// Send a WAIT signal over the port.
+///
+/// #Arguments
+///
+/// * `port` - an initialized and opened serial port to write to.
+///
+fn send_wait(port: &mut PortType) -> Result <(),()> {
+    let instr: [u8;4] = serialize_u32((0x57414954 as u32).to_le()); //'W','A','I','T'
+
+    eprintln!("Send WAIT instruction.");
+
+    if let Err(e) = write_bytes(port, &instr) {
+        eprintln!("Failed to send WAIT instruction. Error: {}", e);
+        return Err(());
+    }
+
+    if let Err(e) = wait_for_ok_signal(port) {
+        eprintln!("OK signal not received after sending WAIT instruction. Error: {}", e);
+        return Err(());
+    }
+
+    Ok(())
 }
 
 
@@ -154,8 +263,7 @@ fn main() {
 /// * `file` - an initialized and opened file.
 /// * `port` - an initialized and opened serial port to write to.
 ///
-fn send_file(file: &mut File, port: &mut PortType) -> Result < u32, Error> {
-    let mut crc: u32 = 0;
+fn send_file(file: &mut File, port: &mut PortType) -> Result <(), Error> {
     let mut buf: [u8; 1] = [0x00];
     let mut fbuf = Vec::new();
 
@@ -183,9 +291,36 @@ fn send_file(file: &mut File, port: &mut PortType) -> Result < u32, Error> {
         }
     }
 
-    return Ok(crc);  //FIXME: For now return zero for the CRC.
+    return Ok(());
 }
 
+///
+/// Waits for a break signal sent by the client on the hardware.
+///
+/// Returns ErrorKind::TimedOut if port read exceeded timeout and/or number of tries.
+///         ErrorKind::* if there was another error.
+///         Ok() if break signal read.
+///
+/// #Arguments
+///
+/// * `port` - an initialized and opened serial port to read from.
+///
+fn wait_for_break_signal(port: &mut PortType) -> Result< (), Error > {
+    let cmplst: [u8; 1] = [0x03];
+    let mut i = 0;
+    
+    while i < 3 {
+        match read_cmp_byte(port, &cmplst) {
+            Ok(ch) if ch == 0x03 => { i = i + 1; },
+            Err(ref e) if e.kind() == ErrorKind::NotFound => { i = 0; }
+            Err(e) => return Err(e),
+            _ => ()
+        }
+    }
+
+    println!("Receieved break signal.");
+    return Ok(());
+}
 
 ///
 /// Waits for an OK signal sent by the client on the hardware.
@@ -309,36 +444,6 @@ fn send_file_size(file: &mut File, port: &mut PortType) -> Result< (), Error > {
     return Ok(());
 }
 
-
-///
-/// Waits for a break signal sent by the client on the hardware.
-///
-/// Returns ErrorKind::TimedOut if port read exceeded timeout and/or number of tries.
-///         ErrorKind::* if there was another error.
-///         Ok() if break signal read.
-///
-/// #Arguments
-///
-/// * `port` - an initialized and opened serial port to read from.
-///
-fn wait_for_break_signal(port: &mut PortType) -> Result< (), Error > {
-    let cmplst: [u8; 1] = [0x03];
-    let mut i = 0;
-    
-    while i < 3 {
-        match read_cmp_byte(port, &cmplst) {
-            Ok(ch) if ch == 0x03 => { i = i + 1; },
-            Err(ref e) if e.kind() == ErrorKind::NotFound => { i = 0; }
-            Err(e) => return Err(e),
-            _ => ()
-        }
-    }
-
-    println!("Receieved break signal.");
-    return Ok(());
-}
-
-
 ///
 /// Writes an array of bytes to the port.
 ///
@@ -457,8 +562,18 @@ fn read_cmp_byte(port: &mut PortType, cmplst: &[u8] ) -> Result< u8, Error > {
     );
 }
 
+
+///
+/// Reads a byte from the serial port and echoes it to the console.
+///
+/// #Arguments
+///
+/// * `port` - an initialized and opened serial port to read from.
+///
 fn read_and_echo(port: &mut PortType) {
     let mut buf: [u8; 1] = [0x00];
+
+    println!("rpi3serbtldr_tx - Read port and echo output.");
 
     loop {
         match port.read(&mut buf) {
