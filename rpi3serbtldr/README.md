@@ -66,7 +66,7 @@ The Broadcom chip which the RPi3 is based on was designed in a way that makes th
 
 **Replace kernel with receiver (rx):**
 
- * Copy rpi3serbtldr_rx program from build directory to "/boot/kernel8.img"
+ * Copy kernel8.img from build directory to "/boot/kernel8.img" on the SD card.
 
 **Boot Raspbian Linux Instead**
 

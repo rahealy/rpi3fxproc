@@ -3,6 +3,10 @@
 
 Implements a bare metal OS-less full-duplex audio effects processor using a Raspberry Pi 3 embedded computer and an Audio Injector Ultra 2 Sound Card.
 
+This project contains code Copyright (c) 2018 Andre Richter <andre.o.richter@gmail.com> and bzt [https://github.com/bztsrc](https://github.com/bztsrc). 
+
+Much of the RPi hardware specific code in this project is derived from information in the "Bare-metal and Operating System development tutorials in Rust on the Raspberry Pi 3" [https://github.com/rust-embedded/rust-raspi3-OS-tutorials](https://github.com/rust-embedded/rust-raspi3-OS-tutorials). This is a recommended resource for anyone interested in learning the specifics involved in solving problems in this particular domain.
+
 <img src="dev_setup.jpg" alt="Current development setup." height="423" width="640"/>
 
 ## Status

@@ -5,6 +5,10 @@ Raspberry Pi Bare Metal Toolkit In Rust
 
 Provides an OS-less (bare metal) library to interface with various periperhals on the RPi Broadcom SOC and the Audio Injector Ultra 2 sound card.
 
+This library contains code Copyright (c) 2018 Andre Richter <andre.o.richter@gmail.com> and bzt [https://github.com/bztsrc](https://github.com/bztsrc). 
+
+Much of the RPi hardware specific code in this library is derived from information in the "Bare-metal and Operating System development tutorials in Rust on the Raspberry Pi 3" [https://github.com/rust-embedded/rust-raspi3-OS-tutorials](https://github.com/rust-embedded/rust-raspi3-OS-tutorials). This is a recommended resource for anyone interested in learning the specifics involved in solving problems in this particular domain.
+
 This software is pre-alpha. No guarantees.
 
 ## Installation
