@@ -80,6 +80,9 @@ fn send_error(uart: &Uart0) -> () {
 }
 
 
+///
+///State machine.
+///
 enum State {
     POLL,
     JTAG,
