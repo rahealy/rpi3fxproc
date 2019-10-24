@@ -1,9 +1,25 @@
 [package]
 name = "rpi3fxproc"
 version = "0.1.0"
-authors = ["rhealy"]
+authors = ["Richard A. Healy <rahealy@users.noreply.github.com>", "Andre Richter <andre.o.richter@gmail.com>", "bzt (bztsrc@github)"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+
+# [dependencies.rpibmtkr]
+# path = "rpibmtkr"
+# 
+# [dependencies.rpi3serbtldr]
+# path = "rpi3serbtldr"
+# 
+# [dependencies.drivers]
+# path = "drivers"
+# 
+# [dependencies.peripherals]
+# path = "peripherals"
+# 
+# [dependencies.hats]
+# path = "hats"
+# 
+# [dependencies.startup]
+# path = "startup"
