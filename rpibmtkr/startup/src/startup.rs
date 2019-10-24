@@ -133,11 +133,11 @@ pub unsafe extern "C" fn _boot() -> ! {
             );
 
 //Enable MMU and caches.
-            SCTLR_EL1.modify (
-                SCTLR_EL1::M::Enable    + //Enable MMU for EL1.
-                SCTLR_EL1::C::Cacheable + //Data access cacheable
-                SCTLR_EL1::I::Cacheable   //Instruction access cacheable
-            );
+//             SCTLR_EL1.modify (
+//                 SCTLR_EL1::M::Enable    + //Enable MMU for EL1.
+//                 SCTLR_EL1::C::Cacheable + //Data access cacheable
+//                 SCTLR_EL1::I::Cacheable   //Instruction access cacheable
+//             );
 
             SP_EL1.set(STACK_START);
             asm::eret();
