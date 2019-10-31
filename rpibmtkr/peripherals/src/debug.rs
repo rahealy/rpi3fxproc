@@ -78,34 +78,35 @@ pub fn u8bits(val: u8) {
     }    
 }
 
+pub fn tohex(val: u8) -> char {
+    match val & 0b0000_1111 {
+        0x0 => '0',
+        0x1 => '1',
+        0x2 => '2',
+        0x3 => '3',
+        0x4 => '4',
+        0x5 => '5',
+        0x6 => '6',
+        0x7 => '7',
+        0x8 => '8',
+        0x9 => '9',
+        0xA => 'A',
+        0xB => 'B',
+        0xC => 'C',
+        0xD => 'D',
+        0xE => 'E',
+        0xF => 'F',
+        _    => ' '
+    }
+}
+
 pub fn u8hex(val: u8) {
     unsafe {
         match &mut DBG {
             Some(dbg) => {
                 dbg.uart.puts("0x");
-                for i in 0..2 {
-                    dbg.uart.send( 
-                        match (val << (i * 4)) & 0b1111_0000 {
-                            0x00 => '0',
-                            0x10 => '1',
-                            0x20 => '2',
-                            0x30 => '3',
-                            0x40 => '4',
-                            0x50 => '5',
-                            0x60 => '6',
-                            0x70 => '7',
-                            0x80 => '8',
-                            0x90 => '9',
-                            0xA0 => 'A',
-                            0xB0 => 'B',
-                            0xC0 => 'C',
-                            0xD0 => 'D',
-                            0xE0 => 'E',
-                            0xF0 => 'F',
-                            _    => ' '
-                        }
-                    );
-                }
+                dbg.uart.send(tohex(val));
+                dbg.uart.send(tohex(val >> 4));
             }
             None => {}
         }
@@ -125,6 +126,38 @@ pub fn u32bits(val: u32) {
             None => {}
         }
     }    
+}
+
+pub fn u32hex(val: u32) {
+    unsafe {
+        match &mut DBG {
+            Some(dbg) => {
+                dbg.uart.puts("0x");
+                for i in (0..8).rev() {
+                    dbg.uart.send (
+                        tohex((val >> i * 4) as u8)
+                    );
+                }
+            }
+            None => {}
+        }
+    }
+}
+
+pub fn u64hex(val: u64) {
+    unsafe {
+        match &mut DBG {
+            Some(dbg) => {
+                dbg.uart.puts("0x");
+                for i in (0..16).rev() {
+                    dbg.uart.send (
+                        tohex((val >> i * 4) as u8)
+                    );
+                }
+            }
+            None => {}
+        }
+    }
 }
 
 pub static mut DBG: Option<Dbg> = None;

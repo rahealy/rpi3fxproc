@@ -45,10 +45,10 @@ pub unsafe fn __unsafe_main() -> ! {
 #[no_mangle]
 pub unsafe extern "C" fn rinit() -> ! {
     extern "C" { //Provided by linker
-        static mut __bss_start: u64;
+        static mut __bss_beg: u64;
         static mut __bss_end: u64;
     }
-    r0::zero_bss(&mut __bss_start, &mut __bss_end);
+    r0::zero_bss(&mut __bss_beg, &mut __bss_end);
     extern "Rust" {
         fn unsafe_main() -> !; //Forward declaration of unsafe_main().
     }
@@ -97,47 +97,6 @@ pub unsafe extern "C" fn _boot() -> ! {
  
 //Set address of function to jump to after transition to EL1.
             ELR_EL2.set(rinit as *const () as u64); //eret jumps to rinit()
-
-//
-// MAIR_EL1
-//
-// Describe to the MMU the attributes the memory/devices will have when they get 
-// mapped into the virtual address space. MAIR_EL1 can have up to 8 different
-// attributes. We just need two - one for DRAM and one for the MMIO peripherals.
-//
-// A field in a page table entry stored in DRAM references one of the attributes
-// set here. When the MMU reads a page table entry it uses the attribute (0..7)
-// for that memory access.
-//
-// High 4 bits sets cache hints applying to accesses from regions of the CPU
-// considered to be 'outer' relative to the memory/device being accessed.
-//
-// Low 4 bits sets cache hints applying to accesses from regions of the CPU
-// considered to be 'inner' relative to the memory/ device being accessed.
-//
-            MAIR_EL1.write (
-//
-//Attribute 1 - General Memory
-//These tell the MMU that the address blocks with attribute 1 are mapped
-//to memory like DRAM.
-//
-                MAIR_EL1::Attr1_HIGH::Memory_OuterWriteBack_NonTransient_ReadAlloc_WriteAlloc +
-                MAIR_EL1::Attr1_LOW_MEMORY::InnerWriteBack_NonTransient_ReadAlloc_WriteAlloc  +
-//
-//Attribute 0 - Device
-//These tell the MMU that address blocks with attribute 0 are mapped
-//to the MMIO peripherals.
-//
-                MAIR_EL1::Attr0_HIGH::Device +
-                MAIR_EL1::Attr0_LOW_DEVICE::Device_nGnRE
-            );
-
-//Enable MMU and caches.
-//             SCTLR_EL1.modify (
-//                 SCTLR_EL1::M::Enable    + //Enable MMU for EL1.
-//                 SCTLR_EL1::C::Cacheable + //Data access cacheable
-//                 SCTLR_EL1::I::Cacheable   //Instruction access cacheable
-//             );
 
             SP_EL1.set(STACK_START);
             asm::eret();

@@ -35,6 +35,7 @@ pub mod mbox;
 pub mod pwm;
 pub mod timer;
 pub mod uart;
+pub mod mmu;
 
 pub const MMIO_BASE: u32 = 0x3F00_0000;         //Peripheral access is derived from this base memory offset.
 

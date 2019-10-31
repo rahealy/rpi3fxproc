@@ -35,6 +35,7 @@ use core::panic::PanicInfo;
 use peripherals::debug; 
 use peripherals::uart::Uart0;
 use peripherals::timer::{Timer, Timer1, Timer3};
+use peripherals::mmu;
 
 #[allow(unused_imports)]
 use startup; //Pull in startup code.
@@ -57,11 +58,16 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 fn main() -> ! {
     Uart0::init();
     debug::init();
+
+    debug::out("Timer test.\r\n");
+
+    mmu::init();
     
     let t1 = Timer1::default();
     let t3 = Timer3::default();
 
-    debug::out("\r\n");
+    t1.one_shot(1_000_000);
+    t3.one_shot(1_000_000);
 
     loop {
 //Exercise timer 1.
