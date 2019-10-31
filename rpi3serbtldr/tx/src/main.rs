@@ -53,6 +53,12 @@ fn main() {
              .use_delimiter(false)
              .takes_value(false)
              .required(false))
+        .arg(Arg::with_name("echo")
+             .help("After jump to loaded code echo output.")
+             .short("e")
+             .use_delimiter(false)
+             .takes_value(false)
+             .required(false))
         .get_matches();
 
 //Get values passed from command line or defaults
@@ -62,6 +68,8 @@ fn main() {
     let time_out  = matches.value_of("timeout").unwrap_or("2000");
     let jtag      = matches.is_present("jtag");
     let wait      = matches.is_present("wait");
+    let echo      = matches.is_present("echo");
+
     let mut settings: SerialPortSettings = Default::default();
 
 //Determine if time_out is an actual number and assign to the serial port settings.      
@@ -90,6 +98,7 @@ fn main() {
     println!("Timeout(ms): {0}", &time_out);
     println!("JTAG: {}", if jtag { "Yes" } else { "No" } );
     println!("Wait: {}", if wait { "Yes" } else { "No" } );
+    println!("Read and Echo: {}", if echo { "Yes" } else { "No" } );
     println!("");
     println!("Begin...");
 
@@ -99,6 +108,12 @@ fn main() {
 //Wait for remote port to transmit break signal.                    
             match wait_for_break_signal(&mut port) {
                 Ok(()) => {
+                    if jtag {
+                        if let Err(_) = send_jtag(&mut port) {
+                            eprintln!("Failed to send jtag instruction.");
+                        }
+                    }
+
                     if fname.len() > 0 {
                         match File::open(fname) {
                             Ok(mut file) => {
@@ -108,7 +123,12 @@ fn main() {
                                     if let Err(_) = send_jump(&mut port) {
                                         eprintln!("Failed to send jump.");
                                     }
-                                    read_and_echo(&mut port);
+                                    
+                                    if echo {
+                                        read_and_echo(&mut port);
+                                    } else {
+                                        return;
+                                    }
                                 }
                             },
 
@@ -118,17 +138,15 @@ fn main() {
                         }
                     }
 
-                    if jtag {
-                        if let Err(_) = send_jtag(&mut port) {
-                            eprintln!("Failed to send jtag instruction.");
-                        }
-                    }
-                    
                     if wait {
                         if let Err(_) = send_wait(&mut port) {
                             eprintln!("Failed to send wait instruction.");
                         } else {
-                            read_and_echo(&mut port);
+                            if echo {
+                                read_and_echo(&mut port);
+                            } else {
+                                return;
+                            }
                         }
                     }
                 },
@@ -346,7 +364,7 @@ fn wait_for_break_signal(port: &mut PortType) -> Result< (), Error > {
         }
     }
 
-    println!("Receieved break signal.");
+    println!("Received break signal.");
     return Ok(());
 }
 
