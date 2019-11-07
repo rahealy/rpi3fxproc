@@ -35,10 +35,10 @@ use core::panic::PanicInfo;
 use peripherals::debug; 
 use peripherals::uart::Uart0;
 use peripherals::timer::{Timer, Timer1, Timer3};
-use peripherals::mmu;
 
-#[allow(unused_imports)]
-use startup; //Pull in startup code.
+//#[allow(unused_imports)]
+//use startup; //Pull in startup code.
+
 
 /// 
 /// Rust requires a panic handler. On panic go into an infinite loop.
@@ -59,10 +59,8 @@ fn main() -> ! {
     Uart0::init();
     debug::init();
 
-    debug::out("Timer test.\r\n");
+    debug::out("Timer Example.\r\n");
 
-    mmu::init();
-    
     let t1 = Timer1::default();
     let t3 = Timer3::default();
 
@@ -79,5 +77,10 @@ fn main() -> ! {
         debug::out("Timer3: Begin one second one shot delay.\r\n");
         t3.one_shot(1_000_000);
         debug::out("Timer3: End one second one shot delay.\r\n");
+        
+        debug::out("Raise exception.\r\n");        
+        let big_addr: u64 = 3 * 1024 * 1024 * 1024;
+        unsafe { core::ptr::read_volatile(big_addr as *mut u64) };
+        debug::out("Exception return.\r\n");        
     }
 }

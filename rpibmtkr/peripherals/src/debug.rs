@@ -24,59 +24,9 @@
 
 /*
  * Writes informational text to uart0.
- * FIXME: Get rid of singleton-like construction. Rust doesn't like it.
  */
 
 use crate::uart;
-
-pub struct Dbg {
-    uart: uart::Uart0
-}
-
-pub fn init() {
-    unsafe {
-        DBG = Some(
-            Dbg {
-                uart: uart::Uart0
-            }
-        );
-    }
-}
-
-pub fn out(val: &str) {
-    unsafe {
-        match &mut DBG {
-            Some(dbg) => dbg.uart.puts(val),
-            None => {}
-        }
-    }
-}
-
-pub fn bit(val: bool) {
-    unsafe {
-        match &mut DBG {
-            Some(dbg) => {
-                dbg.uart.send( if val { '1' } else { '0' } );
-            }
-            None => {}
-        }
-    }    
-}
-
-pub fn u8bits(val: u8) {
-    unsafe {
-        match &mut DBG {
-            Some(dbg) => {
-                for i in (0..8).rev() {
-                    dbg.uart.send( 
-                        if ((1 << i) & val) > 0 { '1' } else { '0' } 
-                    );
-                }
-            }
-            None => {}
-        }
-    }    
-}
 
 pub fn tohex(val: u8) -> char {
     match val & 0b0000_1111 {
@@ -100,64 +50,57 @@ pub fn tohex(val: u8) -> char {
     }
 }
 
+pub fn out(val: &str) {
+    let uart = uart::Uart0::default();
+    uart.puts(val);
+}
+
+pub fn bit(val: bool) {
+    let uart = uart::Uart0::default();
+    uart.send( if val { '1' } else { '0' } );
+}
+
+pub fn u8bits(val: u8) {
+    let uart = uart::Uart0::default();
+    for i in (0..8).rev() {
+        uart.send( 
+            if ((1 << i) & val) > 0 { '1' } else { '0' } 
+        );
+    }
+}
+
 pub fn u8hex(val: u8) {
-    unsafe {
-        match &mut DBG {
-            Some(dbg) => {
-                dbg.uart.puts("0x");
-                dbg.uart.send(tohex(val));
-                dbg.uart.send(tohex(val >> 4));
-            }
-            None => {}
-        }
-    }    
+    let uart = uart::Uart0::default();
+    uart.puts("0x");
+    uart.send(tohex(val));
+    uart.send(tohex(val >> 4));
 }
 
 pub fn u32bits(val: u32) {
-    unsafe {
-        match &mut DBG {
-            Some(dbg) => {
-                for i in (0..32).rev() {
-                    dbg.uart.send( 
-                        if ((1 << i) & val) > 0 { '1' } else { '0' } 
-                    );
-                }
-            }
-            None => {}
-        }
-    }    
+    let uart = uart::Uart0::default();
+    for i in (0..32).rev() {
+        uart.send( 
+            if ((1 << i) & val) > 0 { '1' } else { '0' } 
+        );
+    }
 }
 
 pub fn u32hex(val: u32) {
-    unsafe {
-        match &mut DBG {
-            Some(dbg) => {
-                dbg.uart.puts("0x");
-                for i in (0..8).rev() {
-                    dbg.uart.send (
-                        tohex((val >> i * 4) as u8)
-                    );
-                }
-            }
-            None => {}
-        }
+    let uart = uart::Uart0::default();
+    uart.puts("0x");
+    for i in (0..8).rev() {
+        uart.send (
+            tohex((val >> i * 4) as u8)
+        );
     }
 }
 
 pub fn u64hex(val: u64) {
-    unsafe {
-        match &mut DBG {
-            Some(dbg) => {
-                dbg.uart.puts("0x");
-                for i in (0..16).rev() {
-                    dbg.uart.send (
-                        tohex((val >> i * 4) as u8)
-                    );
-                }
-            }
-            None => {}
-        }
+    let uart = uart::Uart0::default();
+    uart.puts("0x");
+    for i in (0..16).rev() {
+        uart.send (
+            tohex((val >> i * 4) as u8)
+        );
     }
 }
-
-pub static mut DBG: Option<Dbg> = None;

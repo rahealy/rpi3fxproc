@@ -25,12 +25,12 @@
 
 use super::MMIO_BASE;
 use crate::mbox;
-use crate::debug;
 use crate::gpfsel::GPFSEL;
 use core::ops;
 use core::sync::atomic::{compiler_fence, Ordering};
 use cortex_a::asm;
-use register::{mmio::*, register_bitfields};
+use register::register_bitfields;
+use register::mmio::ReadWrite;
 
 
 /**********************************************************************
@@ -280,46 +280,46 @@ pub struct RegisterBlockPL011 {
     DR:     ReadWrite<u32, DR::Register>,       // 0x00
 
 ///Undocumented
-    RSRECR: ReadOnly<u32, RSRECR::Register>,    // 0x04
+    RSRECR: ReadWrite<u32, RSRECR::Register>,   // 0x04
 
 ///Reserved 0
     __res0: [u32; 4],                           // 0x08 - 0x014 not assigned.
 
 ///Flag register
-    FR:     ReadOnly<u32, FR::Register>,        // 0x18
+    FR:     ReadWrite<u32, FR::Register>,       // 0x18
     
 ///Reserved 1
     __res1: [u32; 1],                           // 0x1c not assigned.
 
 ///Not in use
-    ILPR:   ReadOnly<u32, ILPR::Register>,      // 0x20
+    ILPR:   ReadWrite<u32, ILPR::Register>,     // 0x20
 
 ///Integer Baud rate divisor
-    IBRD:   WriteOnly<u32, IBRD::Register>,     // 0x24
+    IBRD:   ReadWrite<u32, IBRD::Register>,     // 0x24
 
 ///Fractional Baud rate divisor
-    FBRD:   WriteOnly<u32, FBRD::Register>,     // 0x28
+    FBRD:   ReadWrite<u32, FBRD::Register>,     // 0x28
     
 ///Line Control register
-    LCRH:   WriteOnly<u32, LCRH::Register>,     // 0x2C
+    LCRH:   ReadWrite<u32, LCRH::Register>,     // 0x2C
     
 ///Control register
-    CR:     WriteOnly<u32, CR::Register>,       // 0x30
+    CR:     ReadWrite<u32, CR::Register>,       // 0x30
 
 ///Interupt FIFO Level Select Register
-    IFLS:   ReadOnly<u32, ILPR::Register>,      // 0x34
+    IFLS:   ReadWrite<u32, ILPR::Register>,     // 0x34
 
 ///Interupt Mask Set Clear Register
-    IMSC:   ReadOnly<u32, ILPR::Register>,      // 0x38
+    IMSC:   ReadWrite<u32, ILPR::Register>,     // 0x38
     
 ///Raw Interupt Status Register
-    RIS:    ReadOnly<u32, ILPR::Register>,      // 0x3C
+    RIS:    ReadWrite<u32, ILPR::Register>,     // 0x3C
 
 ///Masked Interupt Status Register
-    MIS:    ReadOnly<u32, ILPR::Register>,      // 0x40
+    MIS:    ReadWrite<u32, ILPR::Register>,     // 0x40
 
 ///Interupt Clear Register
-    ICR:    WriteOnly<u32, ICR::Register>,      // 0x44
+    ICR:    ReadWrite<u32, ICR::Register>,      // 0x44
 }
 
 
@@ -342,15 +342,11 @@ impl Uart0 {
     }
 
     pub fn init() {
-        Uart0::default().init_internal();
-    }
-
-///Set baud rate and characteristics (115200 8N1) and map to GPIO
-    pub fn init_internal(&self) {
+        let uart = Uart0::default();
         let mut mbox = mbox::Mbox::default();
 
 // turn off UART0
-        self.CR.set(0);
+        uart.CR.write(CR::UARTEN::CLEAR);
 
 // set up clock for consistent divisor values
         mbox.buffer[0] = 9 * 4;
@@ -368,10 +364,12 @@ impl Uart0 {
 // is done by a store operation as well).
         compiler_fence(Ordering::Release);
 
-        if mbox.call(mbox::channel::PROP).is_err() {
-            debug::out("Uart0.init(): Unable to set clock.");
-            panic!();
-        };
+        if let Err(err) = mbox.call(mbox::channel::PROP) {
+            match err {
+                mbox::MboxError::ResponseError => { panic!(); }
+                mbox::MboxError::UnknownError  => { }
+            }
+        }
 
 //Select Uart0 (PL011) alternate function for GPIO pins. 
         GPFSEL::default().fsel_uart0();
@@ -381,14 +379,14 @@ impl Uart0 {
         GPPUDCLK::default().pudclk_uart();
 
 //Set up Uart0 for 155200 baud, 8N1 operation.
-        self.ICR.write(ICR::ALL::CLEAR);
-        self.IBRD.write(IBRD::IBRD.val(2)); // Results in 115200 baud
-        self.FBRD.write(FBRD::FBRD.val(0xB));
-        self.LCRH.write(LCRH::WLEN::EightBit); // 8N1
+        uart.ICR.modify(ICR::ALL::CLEAR);
+        uart.IBRD.modify(IBRD::IBRD.val(2)); // Results in 115200 baud
+        uart.FBRD.modify(FBRD::FBRD.val(0xB));
+        uart.LCRH.modify(LCRH::WLEN::EightBit); // 8N1
 
 //Enable UART, RX, and TX
-        self.CR.write(CR::UARTEN::SET + 
-                      CR::TXE::SET + 
+        uart.CR.write(CR::UARTEN::SET + 
+                      CR::TXE::SET    + 
                       CR::RXE::SET);
     }
 
