@@ -5,6 +5,9 @@ authors = ["Richard A. Healy <rahealy@users.noreply.github.com>", "Andre Richter
 edition = "2018"
 
 [dependencies]
+cortex-a = "2.3.1"
+register = "0.3.2"
+r0 = "0.2.2"
 
 # [dependencies.rpibmtkr]
 # path = "rpibmtkr"
@@ -15,11 +18,11 @@ edition = "2018"
 # [dependencies.drivers]
 # path = "drivers"
 # 
-# [dependencies.peripherals]
-# path = "peripherals"
-# 
-# [dependencies.hats]
-# path = "hats"
-# 
-# [dependencies.startup]
-# path = "startup"
+[dependencies.peripherals]
+path = "rpibmtkr/peripherals"
+
+[dependencies.hats]
+path = "rpibmtkr/hats"
+
+[dependencies.startup]
+path = "rpibmtkr/startup"
