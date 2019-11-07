@@ -9,6 +9,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "drivers"
+version = "0.1.0"
+dependencies = [
+ "cortex-a 2.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "peripherals 0.1.0",
+ "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "register 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "hats"
+version = "0.1.0"
+dependencies = [
+ "cortex-a 2.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "drivers 0.1.0",
+ "peripherals 0.1.0",
+ "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "register 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "peripherals"
+version = "0.1.0"
+dependencies = [
+ "cortex-a 2.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "register 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "r0"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -19,15 +49,6 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "tock-registers 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "startup"
-version = "0.1.0"
-dependencies = [
- "cortex-a 2.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "register 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

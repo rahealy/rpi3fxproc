@@ -23,14 +23,96 @@
  * SOFTWARE.
  */
 
+/*
+ * Minimal implementation of UART for use in debugging startup.
+ */
+
 use super::MMIO_BASE;
 use crate::mbox;
-use crate::gpfsel::GPFSEL;
 use core::ops;
 use core::sync::atomic::{compiler_fence, Ordering};
 use cortex_a::asm;
-use register::register_bitfields;
-use register::mmio::ReadWrite;
+use register::{mmio::*, register_bitfields};
+
+
+register_bitfields! {
+    u32,
+
+///Place holder for struct alignment.
+    GPFSEL0 [
+        RESERVED OFFSET(0) NUMBITS(32)
+    ],
+
+/// GPIO Function Select 1
+    GPFSEL1 [
+/// I/O Pin 15 (RXD)
+        FSEL15 OFFSET(15) NUMBITS(3) [
+            INPUT = 0b000,
+            RXD0 = 0b100, // UART0 (PL011) - Alternate function 0
+            RXD1 = 0b010  // UART1 (Mini UART) - Alternate function 5
+
+        ],
+
+/// I/O Pin 14 (TXD)
+        FSEL14 OFFSET(12) NUMBITS(3) [
+            INPUT = 0b000,
+            TXD0 = 0b100, // UART0 (PL011) - Alternate function 0
+            TXD1 = 0b010  // UART1 (Mini UART) - Alternate function 5
+        ]
+    ]
+}
+
+
+///
+///GPFSEL0 alternative function select register - 0x7E200000
+///
+const GPFSEL0_OFFSET: u32 = 0x0020_0000;
+const GPFSEL0_BASE:   u32 = MMIO_BASE as u32  + GPFSEL0_OFFSET;
+
+
+///
+///Register block representing all the GPFSEL registers.
+///
+#[allow(non_snake_case)]
+#[repr(C)]
+pub struct RegisterBlockGPFSEL {
+    pub GPFSEL0: ReadWrite<u32, GPFSEL0::Register>, // 0x00200000
+    pub GPFSEL1: ReadWrite<u32, GPFSEL1::Register>, // 0x00200004
+}
+
+///
+///Implements accessors to the GPFSEL registers. 
+///
+#[derive(Default)]
+pub struct GPFSEL;
+
+impl ops::Deref for GPFSEL {
+    type Target = RegisterBlockGPFSEL;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*Self::ptr() }
+    }
+}
+
+impl GPFSEL {
+    fn ptr() -> *const RegisterBlockGPFSEL {
+        GPFSEL0_BASE as *const _
+    }
+
+    pub fn fsel_uart0(&self) {
+        self.GPFSEL1.modify(GPFSEL1::FSEL14::INPUT + 
+                            GPFSEL1::FSEL15::INPUT);
+        self.GPFSEL1.modify(GPFSEL1::FSEL14::TXD0 + 
+                            GPFSEL1::FSEL15::RXD0);
+    }
+
+//     pub fn fsel_uart1(&self) {
+//         self.GPFSEL1.modify(GPFSEL1::FSEL14::INPUT + 
+//                             GPFSEL1::FSEL15::INPUT);
+//         self.GPFSEL1.modify(GPFSEL1::FSEL14::TXD1 + 
+//                             GPFSEL1::FSEL15::RXD1);
+//     }
+}
 
 
 /**********************************************************************
@@ -54,7 +136,7 @@ register_bitfields! {
 ///GPPUD GPIO pin clock enable - 0x7E200094
 ///
 const GPPUD_OFFSET: u32 = 0x0020_0094;
-const GPPUD_BASE:   u32 = MMIO_BASE + GPPUD_OFFSET;
+const GPPUD_BASE:   u32 = MMIO_BASE as u32  + GPPUD_OFFSET;
 
 
 ///
@@ -113,7 +195,7 @@ register_bitfields! {
 ///GPPUDCLK GPIO pin clock enable - 0x7E200098
 ///
 const GPPUDCLK_OFFSET: u32 = 0x0020_0098;
-const GPPUDCLK_BASE:   u32 = MMIO_BASE + GPPUDCLK_OFFSET;
+const GPPUDCLK_BASE:   u32 = MMIO_BASE as u32  + GPPUDCLK_OFFSET;
 
 
 ///
@@ -271,7 +353,7 @@ register_bitfields! {
     ]
 }
 
-const UART0_BASE: u32 = MMIO_BASE + 0x0020_1000;
+const UART0_BASE: u32 = MMIO_BASE as u32  + 0x0020_1000;
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -280,46 +362,46 @@ pub struct RegisterBlockPL011 {
     DR:     ReadWrite<u32, DR::Register>,       // 0x00
 
 ///Undocumented
-    RSRECR: ReadWrite<u32, RSRECR::Register>,   // 0x04
+    RSRECR: ReadOnly<u32, RSRECR::Register>,    // 0x04
 
 ///Reserved 0
     __res0: [u32; 4],                           // 0x08 - 0x014 not assigned.
 
 ///Flag register
-    FR:     ReadWrite<u32, FR::Register>,       // 0x18
+    FR:     ReadOnly<u32, FR::Register>,        // 0x18
     
 ///Reserved 1
     __res1: [u32; 1],                           // 0x1c not assigned.
 
 ///Not in use
-    ILPR:   ReadWrite<u32, ILPR::Register>,     // 0x20
+    ILPR:   ReadOnly<u32, ILPR::Register>,      // 0x20
 
 ///Integer Baud rate divisor
-    IBRD:   ReadWrite<u32, IBRD::Register>,     // 0x24
+    IBRD:   WriteOnly<u32, IBRD::Register>,     // 0x24
 
 ///Fractional Baud rate divisor
-    FBRD:   ReadWrite<u32, FBRD::Register>,     // 0x28
+    FBRD:   WriteOnly<u32, FBRD::Register>,     // 0x28
     
 ///Line Control register
-    LCRH:   ReadWrite<u32, LCRH::Register>,     // 0x2C
+    LCRH:   WriteOnly<u32, LCRH::Register>,     // 0x2C
     
 ///Control register
-    CR:     ReadWrite<u32, CR::Register>,       // 0x30
+    CR:     WriteOnly<u32, CR::Register>,       // 0x30
 
 ///Interupt FIFO Level Select Register
-    IFLS:   ReadWrite<u32, ILPR::Register>,     // 0x34
+    IFLS:   ReadOnly<u32, ILPR::Register>,      // 0x34
 
 ///Interupt Mask Set Clear Register
-    IMSC:   ReadWrite<u32, ILPR::Register>,     // 0x38
+    IMSC:   ReadOnly<u32, ILPR::Register>,      // 0x38
     
 ///Raw Interupt Status Register
-    RIS:    ReadWrite<u32, ILPR::Register>,     // 0x3C
+    RIS:    ReadOnly<u32, ILPR::Register>,      // 0x3C
 
 ///Masked Interupt Status Register
-    MIS:    ReadWrite<u32, ILPR::Register>,     // 0x40
+    MIS:    ReadOnly<u32, ILPR::Register>,      // 0x40
 
 ///Interupt Clear Register
-    ICR:    ReadWrite<u32, ICR::Register>,      // 0x44
+    ICR:    WriteOnly<u32, ICR::Register>,      // 0x44
 }
 
 
@@ -346,7 +428,7 @@ impl Uart0 {
         let mut mbox = mbox::Mbox::default();
 
 // turn off UART0
-        uart.CR.write(CR::UARTEN::CLEAR);
+        uart.CR.set(0);
 
 // set up clock for consistent divisor values
         mbox.buffer[0] = 9 * 4;
@@ -364,12 +446,9 @@ impl Uart0 {
 // is done by a store operation as well).
         compiler_fence(Ordering::Release);
 
-        if let Err(err) = mbox.call(mbox::channel::PROP) {
-            match err {
-                mbox::MboxError::ResponseError => { panic!(); }
-                mbox::MboxError::UnknownError  => { }
-            }
-        }
+        if mbox.call(mbox::channel::PROP).is_err() {
+            panic!();
+        };
 
 //Select Uart0 (PL011) alternate function for GPIO pins. 
         GPFSEL::default().fsel_uart0();
@@ -379,25 +458,17 @@ impl Uart0 {
         GPPUDCLK::default().pudclk_uart();
 
 //Set up Uart0 for 155200 baud, 8N1 operation.
-        uart.ICR.modify(ICR::ALL::CLEAR);
-        uart.IBRD.modify(IBRD::IBRD.val(2)); // Results in 115200 baud
-        uart.FBRD.modify(FBRD::FBRD.val(0xB));
-        uart.LCRH.modify(LCRH::WLEN::EightBit); // 8N1
+        uart.ICR.write(ICR::ALL::CLEAR);
+        uart.IBRD.write(IBRD::IBRD.val(2)); // Results in 115200 baud
+        uart.FBRD.write(FBRD::FBRD.val(0xB));
+        uart.LCRH.write(LCRH::WLEN::EightBit); // 8N1
 
 //Enable UART, RX, and TX
         uart.CR.write(CR::UARTEN::SET + 
-                      CR::TXE::SET    + 
+                      CR::TXE::SET + 
                       CR::RXE::SET);
-    }
 
-    ///Poll for pending character.
-    pub fn poll_tx(&self) -> bool {
-        !self.FR.is_set(FR::TXFF)
-    }
-
-    ///Poll for pending character.
-    pub fn poll_rx(&self) -> bool {
-        !self.FR.is_set(FR::RXFE)
+        uart.puts("Uart0::init(): Uart0 initialized.\r\n");
     }
 
     /// Send a character
@@ -415,42 +486,6 @@ impl Uart0 {
         self.DR.set(c as u32);
     }
 
-    /// Receive an unsigned 8-bit int.
-    pub fn getu8(&self) -> u8 {
-        // wait until something is in the buffer
-        loop {
-            if !self.FR.is_set(FR::RXFE) {
-                break;
-            }
-
-            asm::nop();
-        }
-
-        // read it and return
-        self.DR.get() as u8
-    }
-    
-    /// Receive a character
-    pub fn getc(&self) -> char {
-        // wait until something is in the buffer
-        loop {
-            if !self.FR.is_set(FR::RXFE) {
-                break;
-            }
-
-            asm::nop();
-        }
-
-        // read it and return
-        let mut ret = self.DR.get() as u8 as char;
-
-        // convert carrige return to newline
-        if ret == '\r' {
-            ret = '\n'
-        }
-
-        ret
-    }
 
     /// Display a string
     pub fn puts(&self, string: &str) {
@@ -464,23 +499,34 @@ impl Uart0 {
         }
     }
 
-    /// Display a binary value in hexadecimal
-    pub fn hex32(&self, d: u32) {
-        let mut n;
+    pub fn tohex(val: u8) -> char {
+        match val & 0b0000_1111 {
+            0x0 => '0',
+            0x1 => '1',
+            0x2 => '2',
+            0x3 => '3',
+            0x4 => '4',
+            0x5 => '5',
+            0x6 => '6',
+            0x7 => '7',
+            0x8 => '8',
+            0x9 => '9',
+            0xA => 'A',
+            0xB => 'B',
+            0xC => 'C',
+            0xD => 'D',
+            0xE => 'E',
+            0xF => 'F',
+            _    => ' '
+        }
+    }
 
-        for i in 0..8 {
-            // get highest tetrad
-            n = d.wrapping_shr(28 - i * 4) & 0xF;
-
-            // 0-9 => '0'-'9', 10-15 => 'A'-'F'
-            // Add proper offset for ASCII table
-            if n > 9 {
-                n += 0x37;
-            } else {
-                n += 0x30;
-            }
-
-            self.send(n as u8 as char);
+    pub fn u64hex(&self, val: u64) {
+        self.puts("0x");
+        for i in (0..16).rev() {
+            self.send (
+                Uart0::tohex((val >> i * 4) as u8)
+            );
         }
     }
 }

@@ -48,23 +48,29 @@ fn main() {
              .takes_value(false)
              .required(false))
         .arg(Arg::with_name("wait")
-             .help("Signals target to go into an infinite loop")
+             .help("Signals target to go into an infinite loop.")
              .short("w")
+             .use_delimiter(false)
+             .takes_value(false)
+             .required(false))
+        .arg(Arg::with_name("echo")
+             .help("After jump to loaded code echo output.")
+             .short("e")
              .use_delimiter(false)
              .takes_value(false)
              .required(false))
         .get_matches();
 
-        
 //Get values passed from command line or defaults
     let port_name = matches.value_of("port").unwrap();
     let baud_rate = matches.value_of("baud").unwrap_or("115200");
-    let mut file_name = matches.value_of("file").unwrap_or("");
+    let fname     = matches.value_of("file").unwrap_or("");
     let time_out  = matches.value_of("timeout").unwrap_or("2000");
     let jtag      = matches.is_present("jtag");
-    let wait      = matches.is_present("wait");    
-    let mut settings: SerialPortSettings = Default::default();
+    let wait      = matches.is_present("wait");
+    let echo      = matches.is_present("echo");
 
+    let mut settings: SerialPortSettings = Default::default();
 
 //Determine if time_out is an actual number and assign to the serial port settings.      
     if let Ok(timeout) = time_out.parse::<u64>() {
@@ -82,21 +88,17 @@ fn main() {
         ::std::process::exit(1);
     }
 
-//Determine if wait and file are specified.
-    if wait {
-        file_name = "No file will be uploaded when wait (-w) command is provided.";        
-    }
-
 //Tell user what will happen.
     println!("");
     println!("rpi3serbtldr_tx");
     println!("---------------");
-    println!("File: {}", &file_name);
+    println!("File: {}", &fname);
     println!("Port: \"{}\"", &port_name);
     println!("Baud: {}", &baud_rate);
     println!("Timeout(ms): {0}", &time_out);
     println!("JTAG: {}", if jtag { "Yes" } else { "No" } );
     println!("Wait: {}", if wait { "Yes" } else { "No" } );
+    println!("Read and Echo: {}", if echo { "Yes" } else { "No" } );
     println!("");
     println!("Begin...");
 
@@ -111,15 +113,9 @@ fn main() {
                             eprintln!("Failed to send jtag instruction.");
                         }
                     }
-                    
-                    if wait {
-                        if let Err(_) = send_wait(&mut port) {
-                            eprintln!("Failed to send wait instruction.");
-                        } else {
-                            read_and_echo(&mut port);
-                        }
-                    } else {
-                        match File::open(file_name) {
+
+                    if fname.len() > 0 {
+                        match File::open(fname) {
                             Ok(mut file) => {
                                 if let Err(_) = send_load(&mut file, &mut port) {
                                     eprintln!("Failed to send data.");
@@ -127,12 +123,29 @@ fn main() {
                                     if let Err(_) = send_jump(&mut port) {
                                         eprintln!("Failed to send jump.");
                                     }
-                                    read_and_echo(&mut port);
+                                    
+                                    if echo {
+                                        read_and_echo(&mut port);
+                                    } else {
+                                        return;
+                                    }
                                 }
                             },
 
                             Err(e) => {
-                                eprintln!("Failed to open file \"{}\". Error: {}", file_name, e);
+                                eprintln!("Failed to open file \"{}\". Error: {}", fname, e);
+                            }
+                        }
+                    }
+
+                    if wait {
+                        if let Err(_) = send_wait(&mut port) {
+                            eprintln!("Failed to send wait instruction.");
+                        } else {
+                            if echo {
+                                read_and_echo(&mut port);
+                            } else {
+                                return;
                             }
                         }
                     }
@@ -162,7 +175,7 @@ fn send_load(file: &mut File, port: &mut PortType) -> Result <(),()> {
     let instr: [u8;4] = serialize_u32((0x4C4F4144 as u32).to_le()); //'L','O','A','D'
 
     if let Err(e) = write_bytes(port, &instr) {
-        eprintln!("Failed to send DATA instruction. Error: {}", e);
+        eprintln!("Failed to send LOAD instruction. Error: {}", e);
         return Err(());
     }
 
@@ -171,9 +184,17 @@ fn send_load(file: &mut File, port: &mut PortType) -> Result <(),()> {
         return Err(());
     }
 
-    if let Err(e) = wait_for_ok_signal(port) {
-        eprintln!("OK signal not received after sending file size. Error: {}", e);
-        return Err(());
+    match wait_for_ok_signal(port) {
+        Ok(ok) => {
+            if ok == false {
+                return Err(());
+            }
+        },
+
+        Err(e) => {
+            eprintln!("OK signal not received after sending file size. Error: {}", e);
+            return Err(());
+        }
     }
 
     if let Err(e) = send_file(file, port) {
@@ -181,9 +202,18 @@ fn send_load(file: &mut File, port: &mut PortType) -> Result <(),()> {
         return Err(());
     }
 
-    if let Err(e) = wait_for_ok_signal(port) {
-        eprintln!("OK signal not received after sending file. Error: {}", e);
-        return Err(());
+
+    match wait_for_ok_signal(port) {
+        Ok(ok) => {
+            if ok == false {
+                return Err(());
+            }
+        },
+
+        Err(e) => {
+            eprintln!("OK signal not received after sending file. Error: {}", e);
+            return Err(());
+        }
     }
 
     Ok(())
@@ -220,11 +250,19 @@ fn send_jtag(port: &mut PortType) -> Result <(),()> {
         return Err(());
     }
 
-    if let Err(e) = wait_for_ok_signal(port) {
-        eprintln!("OK signal not received after sending JTAG instruction. Error: {}", e);
-        return Err(());
+    match wait_for_ok_signal(port) {
+        Ok(ok) => {
+            if ok == false {
+                return Err(());
+            }
+        },
+
+        Err(e) => {
+            eprintln!("OK signal not received after sending JTAG instruction. Error: {}", e);
+            return Err(());
+        }
     }
-    
+
     Ok(())
 }
 
@@ -246,9 +284,17 @@ fn send_wait(port: &mut PortType) -> Result <(),()> {
         return Err(());
     }
 
-    if let Err(e) = wait_for_ok_signal(port) {
-        eprintln!("OK signal not received after sending WAIT instruction. Error: {}", e);
-        return Err(());
+    match wait_for_ok_signal(port) {
+        Ok(ok) => {
+            if ok == false {
+                return Err(());
+            }
+        },
+
+        Err(e) => {
+            eprintln!("OK signal not received after sending WAIT instruction. Error: {}", e);
+            return Err(());
+        }
     }
 
     Ok(())
@@ -318,7 +364,7 @@ fn wait_for_break_signal(port: &mut PortType) -> Result< (), Error > {
         }
     }
 
-    println!("Receieved break signal.");
+    println!("Received break signal.");
     return Ok(());
 }
 
@@ -327,37 +373,25 @@ fn wait_for_break_signal(port: &mut PortType) -> Result< (), Error > {
 ///
 /// Returns ErrorKind::TimedOut if port read exceeded timeout and/or number of tries.
 ///         ErrorKind::* if there was another error.
-///         OKSignal::OK - Ready to send file.
-///         OKSignal::SizeExceeded - File too big to fit in remote device's memory.
+///         Ok(true) - Got OK.
+///         Ok(false) - Got ER.
 ///
 /// #Arguments
 ///
 /// * `port` - an initialized and opened serial port to read from.
 ///
-fn wait_for_ok_signal(port: &mut PortType) -> Result<(), Error>  {
-    let cmplst: [u8; 2] = ['O' as u8, 'S' as u8];
+fn wait_for_ok_signal(port: &mut PortType) -> Result<bool, Error>  {
+    let cmplst: [u8; 2] = ['O' as u8, 'E' as u8];
+    let mut ok = false;
 
     match read_cmp_byte(port, &cmplst) {
-        Ok(ch) => {        
-            if ch == 'O' as u8 { 
-                let cmpch: [u8; 1] = ['K' as u8];            
+        Ok(ch) => {
+            if ch == 'O' as u8 { //Might be 'OK'. 
+                let cmpch: [u8; 1] = ['K' as u8];
                 match read_cmp_byte(port, &cmpch) {
                     Ok(_) => {
                         println!("Got OK signal.");
-                        return Ok(());
-                    },
-                    
-                    Err(e) => {
-                        return Err(e);
-                    }
-                }
-            } else {
-                let cmpch: [u8; 1] = ['E' as u8];            
-                match read_cmp_byte(port, &cmpch) {
-                    Ok(_) => {
-                        return Err(
-                            Error::new(ErrorKind::Other, "File size exceeds amount of memory available in device.")
-                        );
+                        ok = true;
                     },
                     
                     Err(e) => {
@@ -365,12 +399,28 @@ fn wait_for_ok_signal(port: &mut PortType) -> Result<(), Error>  {
                     }
                 }
             }
-        }
-        
+
+            if ch == 'E' as u8 { //Might be 'ER'.
+                let cmpch: [u8; 1] = ['R' as u8];
+                match read_cmp_byte(port, &cmpch) {
+                    Ok(_) => {
+                        println!("Got ER (error) signal.");
+                        ok = false;
+                    },
+
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            }
+        },
+
         Err(e) => {
-            return Err(e)
+            return Err(e);
         }
     }
+    
+    Ok(ok)
 }
 
 
@@ -428,8 +478,8 @@ fn send_file_size(file: &mut File, port: &mut PortType) -> Result< (), Error > {
             match write_bytes(port, &buf) {
                 Ok(_) => {
                     println!("Sent file size: {}.", len);
-                }
-                
+                },
+
                 Err(e) => {
                     return Err(e);
                 }
@@ -468,15 +518,15 @@ fn write_bytes(port: &mut PortType, bytes: &[u8] ) -> Result<(), Error> {
                 return Err(
                     Error::new(ErrorKind::Other, "Got unexpected amount while trying to write port.")
                 );
-            }
+            },
 
             Err(ref e) if e.kind() == ErrorKind::TimedOut => {
                 print!("Timed out while trying to write port.");
-            }
+            },
 
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 print!("Interrupted while trying to write port.");
-            }
+            },
 
             Err(e) => {
                 return Err(e);
@@ -500,7 +550,7 @@ fn write_bytes(port: &mut PortType, bytes: &[u8] ) -> Result<(), Error> {
 /// Returns ErrorKind::NotFound if received byte doesn't match list.
 ///         ErrorKind::TimedOut if read operation exceeded port's timeout or number of retries.
 ///         ErrorKind::* if there was another error.
-///         Matching character in list.
+///         Matching byte in list.
 ///
 /// #Arguments
 ///
@@ -539,15 +589,15 @@ fn read_cmp_byte(port: &mut PortType, cmplst: &[u8] ) -> Result< u8, Error > {
                         )
                     )
                 );
-            }
+            },
  
             Err(ref e) if e.kind() == ErrorKind::TimedOut => {
                 print!("Timed out while trying to read port.");
-            }
+            },
 
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 print!("Interrupted while trying to read port.");
-            }
+            },
             
             Err(e) => {
                 return Err(e);
@@ -579,16 +629,16 @@ fn read_and_echo(port: &mut PortType) {
         match port.read(&mut buf) {
             Ok(amt_rd) if amt_rd == 1 => {
                 print!("{}", buf[0] as char);
-            }
+            },
 
-            Ok(_) => {}
+            Ok(_) => {},
 
-            Err(ref e) if e.kind() == ErrorKind::TimedOut => {}
+            Err(ref e) if e.kind() == ErrorKind::TimedOut => {},
 
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 println!("rpi3serbtldr_tx - Interrupted while trying to read port. Quitting.");
                 break;
-            }
+            },
             
             Err(_) => {
                 break;

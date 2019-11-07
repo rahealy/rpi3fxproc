@@ -254,30 +254,32 @@ pub struct Ultra2<SI2C, SI2S, STIMER> where
     pub cs4265: cs4265::CS4265<SI2C>,
     pub i2s: SI2S,
     pub timer: STIMER,
-    freeze:  bool,
     pdn_mic: bool,
     pdn_adc: bool,
     pdn_dac: bool,
     dacvola: u8,
     dacvolb: u8,
+    adcgaina: i8,
+    adcgainb: i8,
     smplrt: u32
 }
 
+#[inline]
+fn adc_gain_clip(val: i8) -> i8 {
+    return if val < -24 {
+        -24
+    } else if val > 24 {
+        24
+    } else {
+        val
+    }
+}
 
 impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where 
     II2C: i2c::I2C + Default,
     II2S: i2s::I2S + Default,
     ITIMER: timer::Timer + Default
 {
-///
-///Freeze the controls. FIXME: This shouldn't be public.
-///
-    pub fn freeze(&mut self, val: bool) -> &mut Self {
-        let mut new = self;
-        new.freeze = val;
-        new
-    }
-
 
 ///
 ///Power down/up the microphone.
@@ -317,30 +319,24 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         new
     }
 
-    
-//FIXME: Implement gain some day.
-// ///
-// ///Gain for channel A. Number of half steps from -12dB..12dB.
-// ///
-//     pub fn adc_gain_a(&mut self, val: i8) -> &mut Self {
-//         let mut new = self;
-//         if val > 24 {
-//             val = 24;
-//         } else if val < -24 {
-//             val = -24;
-//         }
-//         new.adcgaina = val;
-//         new
-//     }
-// 
-// ///
-// ///Gain for channel B.
-// ///
-//     pub fn adc_gain_b(&mut self, val: i8) -> &mut Self {
-//         let mut new = self;
-//         new.adcgainb = 0xFF - val;
-//         new
-//     }
+
+///
+///Gain for channel A. Number of half steps from -12dB..12dB.
+///
+    pub fn adc_gain_a(&mut self, val: i8) -> &mut Self {
+        let mut new = self;
+        new.adcgaina = adc_gain_clip(val);
+        new
+    }
+
+///
+///Gain for channel B.
+///
+    pub fn adc_gain_b(&mut self, val: i8) -> &mut Self {
+        let mut new = self;
+        new.adcgainb = adc_gain_clip(val);
+        new
+    }
 
 ///
 ///Volume for channel A.
@@ -369,8 +365,8 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 
         pcm.rxon(!self.pdn_adc). //rxon is the opposite of power down
             txon(!self.pdn_dac).
-            fs_master(false).
-            clk_master(false).
+            fs_master(true).
+            clk_master(true).
             chlen(32,32).       //FIXME: CS4265 has a 2x32bit frame length?
             smplrt(self.smplrt);
 
@@ -402,11 +398,11 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         debug::out("ultra2.cfg_cs4265(): Configuring CS4265.\r\n");
 
 //Power down CS4265.
-        debug::out("ultra2.cfg_cs4265(): Powering down.\r\n");
+        debug::out("ultra2.cfg_cs4265(): Powering down CS4265 for configuration.\r\n");
         if let Err(err) = self.power_down() {
             return Err(err);
         }
-        debug::out("ultra2.cfg_cs4265(): Powered down.\r\n");
+        debug::out("ultra2.cfg_cs4265(): CS4265 Powered down. Continuing configuration.\r\n");
 
 //Set DAC control.
         self.cs4265.reg.DACCTL1.modify (
@@ -493,14 +489,14 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         }
 
 //Print status of CS4265.
-        if let Err(err) = self.cs4265.print_status() {
-            return Err(ERROR::CS4265(err));
-        }
+//         if let Err(err) = self.cs4265.print_status() {
+//             return Err(ERROR::CS4265(err));
+//         }
 
 //Verify local copy of registers matches CS4265 registers.
-        if let Err(err) = self.cs4265.verify_regs() {
-            return Err(ERROR::CS4265(err));
-        }
+//         if let Err(err) = self.cs4265.verify_regs() {
+//             return Err(ERROR::CS4265(err));
+//         }
 
         debug::out("ultra2.cfg_cs4265(): CS4265 configured.\r\n");        
         return Ok(());
@@ -525,9 +521,9 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 ///Power up the CS4265.
 ///
     pub fn power_up(&mut self) -> Result<(), ERROR> {
-        debug::out("ultra2.powerctl(): Powering up CS4265.\r\n");
+        debug::out("ultra2.power_up(): Powering up.\r\n");
         self.cs4265.reg.POWERCTL.write (
-            cs4265::POWERCTL::FREEZE.val(self.freeze as u8)     + //Freeze/thaw the registers.
+            cs4265::POWERCTL::FREEZE::CLEAR                     + //Thaw the registers.
             cs4265::POWERCTL::PDN_MIC.val(self.pdn_mic as u8)   + //Power down/up microphone.
             cs4265::POWERCTL::PDN_ADC.val(self.pdn_adc as u8)   + //Power down/up the ADC
             cs4265::POWERCTL::PDN_DAC.val(self.pdn_dac as u8)   + //Power down/up DAC
@@ -540,16 +536,16 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         self.timer.one_shot(2_000_000);
         
         //Print status of CS4265.
-        if let Err(err) = self.cs4265.print_status() {
-            return Err(ERROR::CS4265(err));
-        }
+//         if let Err(err) = self.cs4265.print_status() {
+//             return Err(ERROR::CS4265(err));
+//         }
 
-        //Verify local copy of registers matches CS4265 registers.
-        if let Err(err) = self.cs4265.verify_regs() {
-            return Err(ERROR::CS4265(err));
-        }
+//         //Verify local copy of registers matches CS4265 registers.
+//         if let Err(err) = self.cs4265.verify_regs() {
+//             return Err(ERROR::CS4265(err));
+//         }
 
-        debug::out("ultra2.powerctl(): CS4265 power up complete.\r\n");
+        debug::out("ultra2.power_up(): Powered up.\r\n");
         return Ok(());
     }
 
@@ -557,7 +553,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 ///Power down the CS4265.
 ///
     pub fn power_down(&mut self) -> Result<(), ERROR> {
-        debug::out("ultra2.powerctl(): Powering down CS4265.\r\n");
+        debug::out("ultra2.power_down(): Powering down.\r\n");
         self.cs4265.reg.POWERCTL.write (
             cs4265::POWERCTL::FREEZE::SET  + //Freeze/thaw the registers.
             cs4265::POWERCTL::PDN_MIC::SET + //Power down microphone.
@@ -572,16 +568,16 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         self.timer.one_shot(2_000_000);
 
         //Print status of CS4265.
-        if let Err(err) = self.cs4265.print_status() {
-            return Err(ERROR::CS4265(err));
-        }
+//         if let Err(err) = self.cs4265.print_status() {
+//             return Err(ERROR::CS4265(err));
+//         }
 
         //Verify local copy of registers matches CS4265 registers.
-        if let Err(err) = self.cs4265.verify_regs() {
-            return Err(ERROR::CS4265(err));
-        }
+//         if let Err(err) = self.cs4265.verify_regs() {
+//             return Err(ERROR::CS4265(err));
+//         }
         
-        debug::out("ultra2.powerctl(): CS4265 power down complete.\r\n");
+        debug::out("ultra2.power_down(): Powered down.\r\n");
         return Ok(());
     }
 
@@ -589,6 +585,8 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 ///Intialize board.
 ///
     pub fn init(&mut self) -> Result<(), ERROR> {
+        debug::out("Ultra2.init(): Initializing Ultra2\r\n");
+
 //Select the reset pin on the RPi.
         GPFSEL::default().fsel_ultra2();
         
@@ -601,10 +599,11 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         }
 
 //Verify local copy of registers matches CS4265 registers.
-        if let Err(err) = self.cs4265.verify_regs() {
-            return Err(ERROR::CS4265(err));
-        }
+//         if let Err(err) = self.cs4265.verify_regs() {
+//             return Err(ERROR::CS4265(err));
+//         }
 
+        debug::out("Ultra2.init(): Ultra2 initialized.\r\n");
         return Ok(());
     }
 

@@ -329,8 +329,9 @@ impl I2C for I2C1 {
             if s.is_set(S::CLKT) {
                 return Err(ERROR::TIMEOUT);
             }
-//Poll for done.
+//Poll for done. 
             if s.is_set(S::DONE) {
+                self.S.modify(S::DONE::SET); //Set done bit to reset.
                 break;
             }
         }
@@ -391,33 +392,40 @@ impl I2C for I2C1 {
         }
 
 //Wait for all bytes to be sent to slave.
-        debug::out("i2c.write(): Xfer finished.\r\n"); // Poll until done.\r\n");
+//        debug::out("i2c.write(): Xfer finished.\r\n"); // Poll until done.\r\n");
         return self.poll_done();
     }
 
+///
+///read()
+///
     fn read(&self, addr: u8, reg: u8, data: &mut [u8]) -> Result<(), ERROR> {
         let len: usize = data.len();
         let mut i: usize = 0;
 
-//        debug::out("i2c.read(): Xfer begin.\r\n");
-//Write the slave device register address to read from.
-//        debug::out("i2c.read(): Write dest register.\r\n");
-        if let Err(err) = self.write(addr, reg, &[]) {
+        if self.S.is_set(S::TA) {  //I2C is already in a transfer.
+            return Err(ERROR::ACTIVE);
+        }
+
+//Send the the register address to the slave device.
+        self.DLEN.set(1);                //Register address is one byte.
+        self.A.set(addr as u32);         //Set the slave address.
+        self.C.modify(C::READ::CLEAR);   //Write.
+        self.C.modify(C::CLEAR::SET);    //Clear the FIFO.
+        self.FIFO.set(reg as u32);       //Write slave register address.
+        self.C.modify(C::START::SET);    //Start transfer.
+
+//Wait until register address has been sent and ack'd.
+        if let Err(err) = self.poll_done() {
             return Err(err);
         }
-//        debug::out("i2c.read(): Dest register written.\r\n");
 
-//Initialize and read.
-//        debug::out("i2c.read(): Reset and initialize.\r\n");
-        self.reset();
-        self.DLEN.set(len as u32);       //Set data length including register address.
+//Receive the slave register contents.
+        self.DLEN.set(len as u32);       //Set data length.
         self.A.set(addr as u32);         //Set the slave address.
         self.C.modify(C::READ::SET);     //Set BSC to read operation.
-
-//        debug::out("i2c.read(): Start xfer.\r\n");
         self.C.modify(C::CLEAR::SET +    //Clear FIFO.
                       C::START::SET);    //Start transfer.
-//        debug::out("i2c.read(): Xfer started.\r\n");
 
 //Keep the FIFO from overflowing until error or all bytes read.
         while i < len {
@@ -426,12 +434,10 @@ impl I2C for I2C1 {
             }
 
             while self.S.is_set(S::RXD) { //Read until empty.
-//                debug::out(".");
                 data[i] = self.FIFO.get() as u8;
                 i += 1;
             }
         }
-        debug::out("i2c.read(): Xfer finished.\r\n"); // Poll until done.\r\n");
         return self.poll_done();
     }
 }

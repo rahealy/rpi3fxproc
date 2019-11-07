@@ -193,11 +193,11 @@ impl PCMCTL {
 ///Reference
 /// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
 ///
-    pub fn i2s_enable(&self, fsck: u32) {
-        debug::out("pcmctl.i2s_enable(): Setting up PCM clock for i2s operation.\r\n");
+    pub fn enable(&self, fsck: u32) {
+        debug::out("pcmctl.enable(): Setting up PCM clock for i2s operation.\r\n");
 
 //Disable clock.
-        debug::out("pcmctl.i2s_enable(): Disabling clock.\r\n");
+        debug::out("pcmctl.enable(): Disabling clock.\r\n");
         self.modify (
             CM_PCMCTL::PASSWD::VAL +
             CM_PCMCTL::ENAB::CLEAR
@@ -205,7 +205,7 @@ impl PCMCTL {
         self.wait_busy(false);
 
 //Set the PCM control registers.
-        debug::out("pcmctl.i2s_enable(): Configuring clock.\r\n");
+        debug::out("pcmctl.enable(): Configuring clock.\r\n");
         self.modify (
             CM_PCMCTL::PASSWD::VAL +
             CM_PCMCTL::MASH::ONE   + //MASH set to one stage.
@@ -213,11 +213,11 @@ impl PCMCTL {
         );
 
 //Oscillator clock source is fixed at 19200000Hz.
-        debug::out("pcmctl.i2s_enable(): Setting clock divider.\r\n");
+        debug::out("pcmctl.enable(): Setting clock divider.\r\n");
         PCMDIV::default().set(fsck, 19_200_000);
 
 //Keep the control values used to set divider and enable. Wait until started.
-        debug::out("pcmctl.i2s_enable(): Enabling clock.\r\n");
+        debug::out("pcmctl.enable(): Enabling clock.\r\n");
         self.modify (
             CM_PCMCTL::PASSWD::VAL +
             CM_PCMCTL::MASH::INT   + //MASH set to integer.
@@ -226,20 +226,20 @@ impl PCMCTL {
         );
 
         self.wait_busy(true);
-        debug::out("pcmctl.i2s_enable(): PCM setup for i2s operation complete.\r\n");
+        debug::out("pcmctl.enable(): PCM setup for i2s operation complete.\r\n");
     }
 
-    pub fn i2s_disable(&self) {
-        debug::out("pcmctl.i2s_disable(): Disabling clock.\r\n");
+    pub fn disable(&self) {
+        debug::out("pcmctl.disable(): Disabling clock.\r\n");
         self.modify (
             CM_PCMCTL::PASSWD::VAL +
             CM_PCMCTL::ENAB::CLEAR
         );
         self.wait_busy(false);
 
-        debug::out("pcmctl.i2s_disable(): Clearing clock divider.\r\n");
+        debug::out("pcmctl.disable(): Clearing clock divider.\r\n");
         PCMDIV::default().clear();
-        debug::out("pcmctl.i2s_disable(): Clock disabled.\r\n");
+        debug::out("pcmctl.disable(): Clock disabled.\r\n");
     }
 
 }

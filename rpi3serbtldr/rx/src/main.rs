@@ -43,7 +43,7 @@ fn send_break_signal(uart: &Uart0) -> () {
 /// * `uart` - initialized uart
 ///
 #[inline]
-fn get_le_u32(uart: &Uart0) -> (u32) {
+fn get_le_u32(uart: &Uart0) -> u32 {
     let mut fsize: u32 = u32::from(uart.getc());
     fsize |= u32::from(uart.getc()) << 8;
     fsize |= u32::from(uart.getc()) << 16;
@@ -80,6 +80,9 @@ fn send_error(uart: &Uart0) -> () {
 }
 
 
+///
+///State machine.
+///
 enum State {
     POLL,
     JTAG,

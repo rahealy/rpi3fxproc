@@ -544,21 +544,22 @@ impl I2S for PCM {
 /// https://github.com/arisena-com/rpi_src/blob/master/apps/i2s_test/src/i2s_test.c
 ///
     fn load(&self, params: &Params) {
-        debug::out("pcm.load(): Loading parameters.\r\n");
+        debug::out("pcm.load(): Loading configuration parameters.\r\n");
 
 //Disable PCM and clear CS_A register.
-        debug::out("pcm.load(): Disable PCM.\r\n");
+        debug::out("pcm.load(): Disable PCM for load.\r\n");
         self.CS_A.set(0);
         PCM::wait_1sec();
-        debug::out("pcm.load(): PCM disabled.\r\n");
-        
+        debug::out("pcm.load(): PCM disabled. Continuing loading.\r\n");
+
 //Set clock speed.
+        let pcmctl = PCMCTL::default();
         if params.clkm | params.fsm {
-            debug::out("pcm.load(): Master. Set PCM clock speed.\r\n");
-            PCMCTL::default().i2s_enable (params.smplrt * params.nbits() * params.nchans());
+            debug::out("pcm.load(): PCM is a master. Enable PCM clock.\r\n");
+            pcmctl.enable (params.smplrt * params.nbits() * params.nchans());
         } else {
-            debug::out("pcm.load(): Slave. No clock necessary.\r\n");
-            PCMCTL::default().i2s_disable();
+            debug::out("pcm.load(): PCM is a slave. Disable PCM clock.\r\n");
+            pcmctl.disable();
         }
 
 //Enable PCM.
@@ -570,41 +571,29 @@ impl I2S for PCM {
 //Configure receive.
         self.RXC_A.modify (
 //Channel 1
-//            RXC_A::CH1WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
-            RXC_A::CH1WEX::CLEAR      + //24bit >= sample size.
-//            RXC_A::CH1EN.val(params.rx.ch1.en as u32) + //Enable channel 1.
-            RXC_A::CH1EN::SET + //Enable channel 1.
+            RXC_A::CH1WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
+            RXC_A::CH1EN.val(params.rx.ch1.en as u32) + //Enable channel 1.
             RXC_A::CH1POS.val(params.rx.ch1.pos)      + //0 based index data position in frame.
-//            RXC_A::CH1WID.val(params.rx.ch1.wid)      + //Sample width in bits.
-            RXC_A::CH1WID.val(0xF) +
+            RXC_A::CH1WID.val(params.rx.ch1.wid)      + //Sample width in bits.
 //Channel 2
-//            RXC_A::CH2WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
-            RXC_A::CH2WEX::CLEAR      + //24bit >= sample size.
-            RXC_A::CH2EN::SET + //Enable channel 2.
-//            RXC_A::CH2EN.val(params.rx.ch2.en as u32) + //Enable channel 2.
+            RXC_A::CH2WEX.val(params.rx.ch1.wex)      + //24bit >= sample size.
+            RXC_A::CH2EN.val(params.rx.ch2.en as u32) + //Enable channel 2.
             RXC_A::CH2POS.val(params.rx.ch2.pos)      + //0 based index data position in frame.
-//            RXC_A::CH2WID.val(params.rx.ch2.wid)        //Sample width in bits.
-            RXC_A::CH2WID.val(0xF)        //Sample width in bits.
+            RXC_A::CH2WID.val(params.rx.ch2.wid)        //Sample width in bits.
         );
 
 //Configure transmit.
         self.TXC_A.modify (
 //Channel 1
-//            TXC_A::CH1WEX.val(params.tx.ch1.wex)      + //24bit >= sample size.
-            TXC_A::CH1WEX::CLEAR      + //24bit >= sample size.
-//            TXC_A::CH1EN.val(params.tx.ch1.en as u32) + //Enable channel 1.
-            TXC_A::CH1EN::SET + //Enable channel 1.
+            TXC_A::CH1WEX.val(params.tx.ch1.wex)      + //24bit >= sample size.
+            TXC_A::CH1EN.val(params.tx.ch1.en as u32) + //Enable channel 1.
             TXC_A::CH1POS.val(params.tx.ch1.pos)      + //0 based index data position in frame.
-//            TXC_A::CH1WID.val(params.tx.ch1.wid)      + //Sample width in bits.
-            TXC_A::CH1WID.val(0xF)      + //Sample width in bits.
+            TXC_A::CH1WID.val(params.tx.ch1.wid)      + //Sample width in bits.
 //Channel 2
-//            TXC_A::CH2WEX.val(params.tx.ch2.wex)      + //24bit >= sample size.
-            TXC_A::CH2WEX::CLEAR      + //24bit >= sample size.
-//            TXC_A::CH2EN.val(params.tx.ch2.en as u32) + //Enable channel 2.
-            TXC_A::CH2EN::SET + //Enable channel 1.
+            TXC_A::CH2WEX.val(params.tx.ch2.wex)      + //24bit >= sample size.
+            TXC_A::CH2EN.val(params.tx.ch2.en as u32) + //Enable channel 2.
             TXC_A::CH2POS.val(params.tx.ch2.pos)      + //0 based index data position in frame.
-//            TXC_A::CH2WID.val(params.tx.ch2.wid)        //Sample width in bits.
-            TXC_A::CH2WID.val(0xF)      //Sample width in bits.
+            TXC_A::CH2WID.val(params.tx.ch2.wid)        //Sample width in bits.
         );
 
 //Set mode. 
@@ -617,8 +606,8 @@ impl I2S for PCM {
             MODE_A::CLKI::CLEAR                     + //No clock inversion.
             MODE_A::FSM.val(!params.fsm as u32)     + //Frame select is an output (master) or input (slave).
             MODE_A::FSI::CLEAR                      + //No frame sync inversion.
-            MODE_A::FLEN.val(params.flen)           + //Clocks in a L/R frame.
-            MODE_A::FSLEN.val(params.fslen)           //Clocks in first half of frame.
+            MODE_A::FLEN.val(params.flen)           + //Number of clocks in a L/R frame.
+            MODE_A::FSLEN.val(params.fslen)           //Number of clocks in first half of frame.
         );
 
 //Clear FIFOs. 
@@ -637,12 +626,18 @@ impl I2S for PCM {
         );
         PCM::wait_1sec();
 
+//Set Interrupt status.
+        self.INTEN_A.modify (
+            INTEN_A::RXR::CLEAR +
+            INTEN_A::TXW::CLEAR
+        );
+
 //Exit standby.
         debug::out("pcm.load(): Exit RAM standby.\r\n");
         self.CS_A.modify(CS_A::STBY::SET);
         PCM::wait_1sec();
 
-        debug::out("pcm.load(): Parameters loaded.\r\n");
+        debug::out("pcm.load(): Configuration parameters loaded.\r\n");
     }
 
     fn tx_on(&self, val: bool) {
@@ -691,21 +686,21 @@ impl PCM {
     }
 
 
-    fn poll_rx_error(&self) -> Result<(), ERROR> {
-        let cs = self.CS_A.extract();
-
-//Under or overflow error.
-        if cs.is_set(CS_A::RXERR) {
-            return Err(ERROR::FLOW);
-        }
-
-//FIFO is in sync with data frame.
-        if cs.is_set(CS_A::RXSYNC) {
-            return Err(ERROR::SYNC);
-        }
-
-        return Ok(());
-    }
+//     fn poll_rx_error(&self) -> Result<(), ERROR> {
+//         let cs = self.CS_A.extract();
+// 
+// //Under or overflow error.
+//         if cs.is_set(CS_A::RXERR) {
+//             return Err(ERROR::FLOW);
+//         }
+// 
+// //FIFO is in sync with data frame.
+//         if cs.is_set(CS_A::RXSYNC) {
+//             return Err(ERROR::SYNC);
+//         }
+// 
+//         return Ok(());
+//     }
 
 ///
 ///Write the interupt status register contents to debug.
@@ -761,13 +756,16 @@ impl PCM {
             }
             self.FIFO_A.write ( FIFO_A::DATA.val(val) );
             i += 1;
-            if i > 1000 {
+            if i > 63 {
                 debug::out("pcm.tx_fill(): Timeout.\r\n");
                 return;
             }
         }
-        debug::u32bits(i);
-        debug::out("\r\n");
+        debug::out("pcm.tx_fill(): Wrote ");
+        debug::u32hex(val);
+        debug::out(" ");
+        debug::u32hex(i);
+        debug::out(" times.\r\n");
         debug::out("pcm.tx_fill(): End.\r\n");
     }
 
