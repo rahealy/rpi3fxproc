@@ -1,7 +1,5 @@
 #
 # Makefile
-#  Rust cargo doesn't quite have the functionality we need yet so using
-#  a very simple makefile to automate building.
 #
 # Targets:
 #
@@ -10,6 +8,10 @@
 # Example:
 #  $ make clean
 #
+
+#######################################################################
+# Targets
+#######################################################################
 
 clean:
 	cargo clean

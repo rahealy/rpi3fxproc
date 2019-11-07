@@ -27,14 +27,25 @@
 /************************** Startup Code ******************************/
 
 ///
-/// Transition from unsafe rust code to safe rust code in main() 
-/// function.
+/// First unsafe rust code. Initalize RPi MMU, set up exception
+/// handlers and transition to safe rust code in main().
 ///
 #[export_name = "unsafe_main"]
 pub unsafe fn __unsafe_main() -> ! {
+    use crate::uart;
+    use crate::memory;
+    use crate::exceptions;
+
     extern "Rust" {
         fn main() -> !; //Forward declaration of main().
     }
+
+//Initialze startup subsystems.
+    uart::Uart0::init();
+    exceptions::init();
+    memory::init();
+
+    uart::Uart0::default().puts("startup::__unsafe_main(): Calling main().\r\n");
     main();
 }
 
@@ -94,7 +105,7 @@ pub unsafe extern "C" fn _boot() -> ! {
                 SPSR_EL2::F::Masked + //Whatever here isn't returned.
                 SPSR_EL2::M::EL1h     //On eret return to EL1.
             );
- 
+
 //Set address of function to jump to after transition to EL1.
             ELR_EL2.set(rinit as *const () as u64); //eret jumps to rinit()
 
