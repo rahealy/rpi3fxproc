@@ -59,6 +59,8 @@ fn init_ultra2() {
 
 //Set up Ultra2 hat.
     ultra2.pdn_mic(true).   //Power down microphone.
+           adc_gain_a(-24).
+           adc_gain_b(-24).
            pdn_adc(true).   //Don't use ADC.
            pdn_dac(false).  //Use DAC
            dac_vol_a(0xFF). //Full volume.
@@ -103,6 +105,9 @@ fn init_ultra2() {
     let mut val: i32 = 0x007F_FFFF;
 
     debug::out("rpi3fxproc::init_ultra2(): Write 1 second of data.\r\n");
+    ultra2.cs4265.dump_regs();
+    ultra2.i2s.dump_regs();
+
     while run {
         let cs = i2s.CS_A.extract();
 

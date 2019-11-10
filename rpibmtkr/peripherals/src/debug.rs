@@ -46,7 +46,7 @@ pub fn tohex(val: u8) -> char {
         0xD => 'D',
         0xE => 'E',
         0xF => 'F',
-        _    => ' '
+        _    => '.'
     }
 }
 
@@ -60,7 +60,7 @@ pub fn bit(val: bool) {
     uart.send( if val { '1' } else { '0' } );
 }
 
-pub fn u8bits(val: u8) {
+pub fn u8bitsi(val: u8) {
     let uart = uart::Uart0::default();
     for i in (0..8).rev() {
         uart.send( 
@@ -69,17 +69,45 @@ pub fn u8bits(val: u8) {
     }
 }
 
+pub fn u8bits(val: u8) {
+    let uart = uart::Uart0::default();
+    uart.puts("0b");
+    for i in (0..8).rev() {
+        if (i % 4) == 0 { uart.send('_'); }
+        uart.send( 
+            if ((1 << i) & val) > 0 { '1' } else { '0' } 
+        );
+    }
+}
+
+pub fn u8hexi(val: u8) {
+    let uart = uart::Uart0::default();
+    uart.send(tohex(val >> 4));
+    uart.send(tohex(val));
+}
+
 pub fn u8hex(val: u8) {
     let uart = uart::Uart0::default();
     uart.puts("0x");
-    uart.send(tohex(val));
     uart.send(tohex(val >> 4));
+    uart.send(tohex(val));
+}
+
+pub fn u32bitsi(val: u32) {
+    let uart = uart::Uart0::default();
+    for i in (0..32).rev() {
+        uart.send(
+            if ((1 << i) & val) > 0 { '1' } else { '0' } 
+        );
+    }
 }
 
 pub fn u32bits(val: u32) {
     let uart = uart::Uart0::default();
+    uart.puts("0b");
     for i in (0..32).rev() {
-        uart.send( 
+        if (i < 31) && (i % 4 == 3) { uart.send('_'); }
+        uart.send(
             if ((1 << i) & val) > 0 { '1' } else { '0' } 
         );
     }
