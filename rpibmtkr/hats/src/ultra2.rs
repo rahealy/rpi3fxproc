@@ -365,25 +365,25 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 
         pcm.rxon(!self.pdn_adc). //rxon is the opposite of power down
             txon(!self.pdn_dac).
-            fs_master(true).
-            clk_master(true).
+            fs_master(false).
+            clk_master(false).
             chlen(32,32).       //FIXME: CS4265 has a 2x32bit frame length?
             smplrt(self.smplrt);
 
-        pcm.rx.ch1.enable(!self.pdn_adc).
-                   width(24). //Sample width is 24 bits.
+        pcm.rx.ch1.enable(true).
+                   width(32). //Sample width must be 32 bits for i2s.
                    pos(1);    //Sample data starts 1 clock after frame begins.
 
-        pcm.rx.ch2.enable(!self.pdn_adc).
-                   width(24). //Sample width is 24 bits.
+        pcm.rx.ch2.enable(true).
+                   width(32). //Sample width must be 32 bits for i2s.
                    pos(33);   //Data starts 33 clocks after frame begins.
 
-        pcm.tx.ch1.enable(!self.pdn_dac).
-                   width(24). //Sample width is 24 bits.
+        pcm.tx.ch1.enable(true).
+                   width(32). //Sample width must be 32 bits for i2s.
                    pos(1);    //Data starts 1 clock after frame begins.
 
-        pcm.tx.ch2.enable(!self.pdn_dac).
-                   width(24). //Sample width is 24 bits.
+        pcm.tx.ch2.enable(true).
+                   width(32). //Sample width must be 32 bits for i2s.
                    pos(33);   //Data starts 33 clocks after frame begins.
 
         debug::out("ultra2.cfg_i2s(): Loading i2s configuration.\r\n");
@@ -431,33 +431,39 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         );
 
 //Set gain to 0 dB.
-        self.cs4265.reg.PGAB.set(0);
-        self.cs4265.reg.PGAA.set(0);
+        self.cs4265.reg.PGAA.write(cs4265::PGAA::GAIN.val(self.adcgaina as u8));
+        self.cs4265.reg.PGAB.write(cs4265::PGAB::GAIN.val(self.adcgainb as u8));
 
 //Set soft ramp, zero crossing detection and line level.
         self.cs4265.reg.AICTL.modify (
-            cs4265::AICTL::PGASOFT::CLEAR + //Do not use soft ramp on mute and data loss.
-            cs4265::AICTL::PGAZERO::CLEAR + //Do not use zero crossing detection.
-            cs4265::AICTL::SELECT::LINE     //Line level.
+            cs4265::AICTL::PGASOFT::SET + //Use soft ramp on mute and data loss.
+            cs4265::AICTL::PGAZERO::SET + //Use zero crossing detection.
+            cs4265::AICTL::SELECT::LINE   //Line level.
         );
 
 //Volume.
-        self.cs4265.reg.DACVOLA.write(cs4265::DACVOLA::VOL.val(self.dacvola));
-        self.cs4265.reg.DACVOLB.write(cs4265::DACVOLB::VOL.val(self.dacvolb));
+        self.cs4265.reg.DACVOLA.write(
+            cs4265::DACVOLA::VOL.val(self.dacvola)
+        );
+
+        self.cs4265.reg.DACVOLB.write(
+            cs4265::DACVOLB::VOL.val(self.dacvolb)
+        );
 
 //Set soft ramp, zero crossing detection and invert.
-        self.cs4265.reg.DACCTL2.modify ( //FIXME: Possible anomaly Bit 0 is reserved and set - different from datasheet.
-            cs4265::DACCTL2::DACSOFT::CLEAR     + //Do not use soft ramp on mute and data loss.
-            cs4265::DACCTL2::DACZERO::CLEAR     + //Do not use zero crossing detection.
-            cs4265::DACCTL2::INVERTDAC::CLEAR     //Do not invert output.
+        self.cs4265.reg.DACCTL2.modify ( 
+//FIXME: Possible anomaly Bit 0 is reserved and set - different from datasheet which has bit cleared.
+            cs4265::DACCTL2::DACSOFT::SET     + //Use soft ramp on mute and data loss.
+            cs4265::DACCTL2::DACZERO::SET     + //Use zero crossing detection.
+            cs4265::DACCTL2::INVERTDAC::CLEAR   //Do not invert output.
         );
 
 //Select which conditions affect the STATUS register. 
         self.cs4265.reg.STATUSMASK.modify (
-            cs4265::STATUSMASK::EFTCM::SET      + //Set status bit on S/PDIF error.
-            cs4265::STATUSMASK::CLKERRM::SET    + //Set status bit on clock error.
-            cs4265::STATUSMASK::ADCOVFLM::SET   + //Set status bit on overflow error.
-            cs4265::STATUSMASK::ADCUNDRFLM::SET   //Set status bit on underflow.
+            cs4265::STATUSMASK::EFTCM::CLEAR      + //Set status bit on S/PDIF error.
+            cs4265::STATUSMASK::CLKERRM::CLEAR    + //Set status bit on clock error.
+            cs4265::STATUSMASK::ADCOVFLM::CLEAR   + //Set status bit on overflow error.
+            cs4265::STATUSMASK::ADCUNDRFLM::CLEAR   //Set status bit on underflow.
         );
 
 //All updates to status register occur on rising edge.
@@ -479,7 +485,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 //Turn off S/PDIF transmitter.
         self.cs4265.reg.XMITCTL2.modify (
             cs4265::XMITCTL2::TX_DIF::I2S24BIT +
-            cs4265::XMITCTL2::TXOFF::CLEAR
+            cs4265::XMITCTL2::TXOFF::SET
         );
 
 //Load configuration.

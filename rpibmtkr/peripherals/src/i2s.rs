@@ -349,7 +349,9 @@ register_bitfields! {
 ///Channel position in clocks in frame.
         CH1POS OFFSET(20) NUMBITS(10) [],
 
-///Sample size in bits 0x0 = 8 bits, 0xF = 24 bits.
+///Sample size in bits
+///If CH1WEX clear then 0x0 = 8 bits, 0xF = 24 bits.
+///If CH1WEX set then sample size is 16 + CH1WID + 8
         CH1WID OFFSET(16) NUMBITS(4) [
             W8  = 0x0,
             W16 = 0x8,
@@ -365,7 +367,9 @@ register_bitfields! {
 ///Channel position in clocks in frame.
         CH2POS OFFSET(4) NUMBITS(10) [],
 
-///Sample size in bits 0x0 = 8 bits, 0xF = 24 bits.
+///Sample size in bits.
+///If CH2WEX clear then 0x0 = 8 bits, 0xF = 24 bits.
+///If CH2WEX set then sample size is 16 + CH2WID + 8
         CH2WID OFFSET(0) NUMBITS(4) [
             W8  = 0x0,
             W16 = 0x8,
@@ -603,10 +607,10 @@ impl I2S for PCM {
             MODE_A::FRXP::CLEAR                     + //Don't pack 2x16bit samples into one 32bit FIFO location. 
             MODE_A::FTXP::CLEAR                     + //Don't pack 2x16bit samples into one 32bit FIFO location. 
             MODE_A::CLKM.val(!params.clkm as u32)   + //Clock is an output (master) or input (slave).
-            MODE_A::CLKI::CLEAR                     + //No clock inversion.
+            MODE_A::CLKI::IRISING_OFALLING          + //Invert clock.
             MODE_A::FSM.val(!params.fsm as u32)     + //Frame select is an output (master) or input (slave).
-            MODE_A::FSI::CLEAR                      + //No frame sync inversion.
-            MODE_A::FLEN.val(params.flen)           + //Number of clocks in a L/R frame.
+            MODE_A::FSI::SET                        + //Sync on FS High to low.
+            MODE_A::FLEN.val(params.flen - 1)       + //0 based number of clocks in a L/R frame.
             MODE_A::FSLEN.val(params.fslen)           //Number of clocks in first half of frame.
         );
 
@@ -621,8 +625,8 @@ impl I2S for PCM {
 //Set thresholds.
         debug::out("pcm.load(): Set FIFO thresholds.\r\n");
         self.CS_A.modify (
-            CS_A::RXTHR::D   + //RXR set when FIFO is less than full.
-            CS_A::TXTHR::D     //TXW set when FIFO is one sample shy of full.
+            CS_A::RXTHR::B  + //RXR set when FIFO is less than full.
+            CS_A::TXTHR::B    //TXW set when FIFO is one sample shy of full.
         );
         PCM::wait_1sec();
 
@@ -739,6 +743,39 @@ impl PCM {
         debug::out( if cs.is_set(CS_A::TXERR)  { "TXERR = 1\r\n" } else { "TXERR = 0\r\n" } );
         debug::out( if cs.is_set(CS_A::RXSYNC) { "RXSYNC = 1\r\n" } else { "RXSYNC = 0\r\n" } );
         debug::out( if cs.is_set(CS_A::TXSYNC) { "TXSYNC = 1\r\n" } else { "TXSYNC = 0\r\n" } );
+    }
+
+    pub fn dump_regs(&self) {
+        let cs = self.CS_A.extract();
+        let fifo = self.FIFO_A.extract();
+        let mode = self.MODE_A.extract();
+        let rxc = self.RXC_A.extract();
+        let txc = self.TXC_A.extract();
+        let dreq = self.DREQ_A.extract();
+        let inten = self.INTEN_A.extract();
+        let intstc = self.INTSTC_A.extract();
+        let gray = self.GRAY.extract();
+        
+        let print_register = |addr, val| {
+            debug::out("(");
+            debug::u32hex(addr);
+            debug::out("): ");
+            debug::u32hex(val);
+            debug::out(" ");
+            debug::u32bits(val);
+            debug::out("\r\n");
+        };
+        
+        debug::out("                           1098 7654 3210 9876 5432 1098 7654 3210\r\n");
+        print_register(PCM_BASE + 0x00, cs.get()); 
+        print_register(PCM_BASE + 0x04, fifo.get());
+        print_register(PCM_BASE + 0x08, mode.get());
+        print_register(PCM_BASE + 0x0C, rxc.get());
+        print_register(PCM_BASE + 0x10, txc.get());
+        print_register(PCM_BASE + 0x14, dreq.get());
+        print_register(PCM_BASE + 0x18, inten.get());
+        print_register(PCM_BASE + 0x1C, intstc.get());
+        print_register(PCM_BASE + 0x20, gray.get());
     }
 
 ///

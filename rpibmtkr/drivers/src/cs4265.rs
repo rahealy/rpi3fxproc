@@ -157,17 +157,11 @@ register_bitfields! {
     ],
 ///Programmable gain amplifier Channel B register. I2C address 0x07.
     PGAB [
-///Set this bit for 1/2 dB.
-        HALF OFFSET(0) NUMBITS(1) [],
-///Two's complement integer value -12dB..12dB.
-        INT OFFSET(1) NUMBITS(5) []
+        GAIN OFFSET(0) NUMBITS(6) []
     ],
 ///Programmable gain amplifier Channel A register. I2C address 0x08.
     PGAA [
-///Set this bit for 1/2 dB.
-        HALF OFFSET(0) NUMBITS(1) [],
-///Two's complement integer value -12dB..12dB.
-        INT OFFSET(1) NUMBITS(5) []
+        GAIN OFFSET(0) NUMBITS(6) []
     ],
 ///Analog input control register. I2C address 0x09.
     AICTL [
@@ -598,6 +592,34 @@ impl <I> CS4265<I> where
                 return Err(ERROR::I2C(err));
             }
         }
+    }
+
+///
+///Print the contents of the registers similarlly to the linux i2cdump command.
+///
+    pub fn dump_regs(&self) {
+        let mut cur: RegisterInstance = RegisterInstance::default();
+
+        if let Err(err) = self.i2c.read(self.addr,
+                                        RegisterAddress::CHIPID as u8, 
+                                        &mut cur.data) 
+        {
+            debug::out("cs4265.dump_regs(): Error: ");
+            debug::out(err.msg());
+        }
+        
+        debug::out("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\r\n");
+        debug::out("00:    ");
+        for i in 0x01..0x10 {
+            debug::u8hexi(cur.data[i - 1]);
+            debug::out(" ");
+        }
+        debug::out("\r\n10: ");
+        for i in 0x10..0x13 {
+            debug::u8hexi(cur.data[i - 1]);
+            debug::out(" ");
+        }
+        debug::out("\r\n");
     }
 
 ///
