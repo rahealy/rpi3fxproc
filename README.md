@@ -12,7 +12,9 @@ Much of the RPi hardware specific code in this project is derived from informati
 ## Status
 
 Currently pre-alpha.
+
 (11/10/2019) Fixed I2S misconfigurations for output. Implementing a simple delay for testing input->output.
+
 (09/15/2019) Stalled on troubleshooting why the Broadcom SOC's i2s subsystem isn't communicating with the Ultra2 sound card.
 
 ## Installation
