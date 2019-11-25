@@ -1,0 +1,9 @@
+[package]
+name = "bootloader_tx"
+version = "0.1.0"
+authors = ["Richard A. Healy <rahealy@users.noreply.github.com>"]
+edition = "2018"
+
+[dependencies]
+clap = "2.33.0"
+serialport = "3.2.0"
