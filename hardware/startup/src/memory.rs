@@ -196,7 +196,7 @@ pub unsafe fn init() {
     uart.puts("mmu::init_page_tables(): Setting up level 2 table\r\n");
 
     print_range(0, 0x20_0000, 0x20_0000);
-    uart.puts(" -> level 3 table.\r\n");
+    uart.puts("->level 3 table.\r\n");
     LVL2_TABLE[0] = (DESCRIPTOR::VALID::SET  +
                      DESCRIPTOR::TYPE::TABLE +
                      DESCRIPTOR::NEXT_LVL_TABLE_ADDR_4KiB.val (
