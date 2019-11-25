@@ -1,5 +1,5 @@
-# rpibmtkr
-Raspberry Pi Bare Metal Toolkit In Rust
+# Hardware
+Raspberry Pi Bare Metal Hardware Interface
 
 ## About
 

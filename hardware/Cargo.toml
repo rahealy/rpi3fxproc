@@ -1,8 +1,8 @@
 [package]
-name = "rpibmtkr"
+name = "hardware"
 version = "0.1.0"
 authors = ["Richard A. Healy <rahealy@users.noreply.github.com>", "Andre Richter <andre.o.richter@gmail.com>", "bzt (bztsrc@github)"]
-description = "RaspberryPi Bare Metal Toolkit in Rust"
+description = "RaspberryPi Bare Metal Hardware Interface"
 edition = "2018"
 
 [dependencies]
