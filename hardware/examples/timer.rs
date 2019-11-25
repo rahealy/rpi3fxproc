@@ -57,7 +57,6 @@ fn panic(_info: &PanicInfo) -> ! { loop {} }
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
     Uart0::init();
-    debug::init();
 
     debug::out("Timer Example.\r\n");
 
