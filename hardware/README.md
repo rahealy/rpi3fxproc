@@ -23,7 +23,7 @@ $ cargo install cargo-xbuild cargo-binutils
 
 ### Bootloader
 
-For development it's recommended to use a serial booloader like "rpi3serbtldr" included in this repository. See the "README.md" in the "rpi3serbtldr" directory for details on installation and use.
+For development it's recommended to use a serial booloader like "bootloader" included in this repository. See the "README.md" in the "bootloader" directory for details on installation and use.
 
 ### Build
 
@@ -33,7 +33,7 @@ Try:
 make clean examples
 ```
 
-Example executables are located in "rpibmtkr" directory.
+Example executables are located in the "hardware/examples/" directory.
 
 ```
 $ ../rpi3serbtldr/tx/rpi3serbtldr_tx -b 115200 -p "/dev/ttyACM0" -f "timer" -t 8000
