@@ -1,6 +1,6 @@
-# rpi3serbtldr
+# Bootloader
 
-Raspberry Pi 3 Serial Bootloader In Rust
+Raspberry Pi Serial Bootloader In Rust
 
 ## About
 
@@ -37,7 +37,7 @@ Make targets are debug, release, clean. Make defaults to debug.
 Enter the following on the command line to build the debug version:
 
 ```
-$ cd rpiserbtldr
+$ cd bootloader
 $ make
 ```
 
