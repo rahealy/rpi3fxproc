@@ -120,10 +120,8 @@ Integrate OSC support.
 ### Multi-Core
 
 Tentative split:
-Core 0 - UART, UI, OSC
 
-Core 1 - Effects rack unit 0
-
-Core 2 - Effects rack unit 1
-
-Core 3 - Software synth (un-tiss un-tiss beeeowwwoop)
+* Core 0 - UART, UI, OSC
+* Core 1 - Effects rack unit 0
+* Core 2 - Effects rack unit 1
+* Core 3 - Software synth (un-tiss un-tiss beeeowwwoop)
