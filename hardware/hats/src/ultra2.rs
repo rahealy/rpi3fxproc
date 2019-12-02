@@ -55,13 +55,12 @@
  *
  */
 
-use core::ops;
-use peripherals::MMIO_BASE;
 use peripherals::{debug, i2c, i2s, timer};
+use peripherals::gpset::{GPSET, GPSET0};
+use peripherals::gpclr::{GPCLR, GPCLR0};
+use peripherals::gpfsel::{GPFSEL};
 use drivers::cs4265;
 use drivers::cs4265::RegisterAddress;
-use register::register_bitfields;
-use register::mmio::ReadWrite;
 
 
 /**********************************************************************
@@ -71,6 +70,18 @@ use register::mmio::ReadWrite;
 pub enum ERROR {
     I2S(i2s::ERROR),
     CS4265(cs4265::ERROR)
+}
+
+impl From<i2s::ERROR> for ERROR {
+    fn from(err: i2s::ERROR) -> ERROR {
+        ERROR::I2S(err)
+    }
+}
+
+impl From<cs4265::ERROR> for ERROR {
+    fn from(err: cs4265::ERROR) -> ERROR {
+        ERROR::CS4265(err)
+    }
 }
 
 impl ERROR {
@@ -84,186 +95,8 @@ impl ERROR {
 
 
 /**********************************************************************
- * GPFSEL
+ * Params
  *********************************************************************/
-
-register_bitfields! {
-    u32,
-
-/// GPIO Function Select 0
-    GPFSEL0 [
-/// RPi I/O Pin 29 (BCM5) used as reset for the ultra2.
-        FSEL5 OFFSET(15) NUMBITS(3) [
-            OUTPUT = 0b001
-        ]
-    ]
-}
-
-
-///
-///GPFSEL0 alternative function select register - 0x7E200000
-///
-const GPFSEL0_OFFSET: u32 = 0x0020_0000;
-const GPFSEL0_BASE:   u32 = MMIO_BASE + GPFSEL0_OFFSET;
-
-///
-///Register block representing all the GPFSEL registers.
-///
-#[allow(non_snake_case)]
-#[repr(C)]
-struct RegisterBlockGPFSEL {
-    GPFSEL0: ReadWrite<u32, GPFSEL0::Register>
-}
-
-///
-///Implements accessors to the GPFSEL registers. 
-///
-#[derive(Default)]
-struct GPFSEL;
-
-impl ops::Deref for GPFSEL {
-    type Target = RegisterBlockGPFSEL;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*Self::ptr() }
-    }
-}
-
-impl GPFSEL {
-    fn ptr() -> *const RegisterBlockGPFSEL {
-        GPFSEL0_BASE as *const _
-    }
-
-    fn fsel_ultra2(&self) {
-        self.GPFSEL0.modify(GPFSEL0::FSEL5::OUTPUT);
-    }
-}
-
-
-/**********************************************************************
- * GPSET
- *********************************************************************/
-
-register_bitfields! {
-    u32,
-
-///GPIO Set pin.
-    GPSET0 [
-///Set RPi I/O Pin 29 (BCM5) to bring ultra2 out of reset condition.
-        PSET5 OFFSET(5) NUMBITS(1) []
-    ]
-}
-
-///
-///GPSET0 pin set register - 0x7E20001C
-///
-const GPSET0_OFFSET: u32 = 0x0020_001C;
-const GPSET0_BASE:   u32 = MMIO_BASE + GPSET0_OFFSET;
-
-///
-///Register block representing all the GPSET registers.
-///
-#[allow(non_snake_case)]
-#[repr(C)]
-struct RegisterBlockGPSET {
-    GPSET0: ReadWrite<u32, GPSET0::Register>
-}
-
-///
-///Implements accessors to the GPSET registers. 
-///
-#[derive(Default)]
-struct GPSET;
-
-impl ops::Deref for GPSET {
-    type Target = RegisterBlockGPSET;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*Self::ptr() }
-    }
-}
-
-impl GPSET {
-    fn ptr() -> *const RegisterBlockGPSET {
-        GPSET0_BASE as *const _
-    }
-}
-
-
-/**********************************************************************
- * GPCLR
- *********************************************************************/
-
-register_bitfields! {
-    u32,
-
-///GPIO Clear pin.
-    GPCLR0 [
-///Clear RPi Pin 29 (BCM5) to put ultra2 into reset condition.
-        PCLR5 OFFSET(5) NUMBITS(1) []
-    ]
-}
-
-///
-///GPCLR0 pin set register - 0x7E200028
-///
-const GPCLR0_OFFSET: u32 = 0x0020_0028;
-const GPCLR0_BASE:   u32 = MMIO_BASE + GPCLR0_OFFSET;
-
-
-///
-///Register block representing all the GPCLR registers.
-///
-#[allow(non_snake_case)]
-#[repr(C)]
-struct RegisterBlockGPCLR {
-    GPCLR0: ReadWrite<u32, GPCLR0::Register>
-}
-
-///
-///Implements accessors to the GPCLR registers. 
-///
-#[derive(Default)]
-struct GPCLR;
-
-impl ops::Deref for GPCLR {
-    type Target = RegisterBlockGPCLR;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*Self::ptr() }
-    }
-}
-
-impl GPCLR {
-    fn ptr() -> *const RegisterBlockGPCLR {
-        GPCLR0_BASE as *const _
-    }
-}
-
-
-/**********************************************************************
- * Ultra2
- *********************************************************************/
-
-#[derive(Default)]
-pub struct Ultra2<SI2C, SI2S, STIMER> where 
-    SI2C: i2c::I2C,
-    SI2S: i2s::I2S,
-    STIMER: timer::Timer
-{
-    pub cs4265: cs4265::CS4265<SI2C>,
-    pub i2s: SI2S,
-    pub timer: STIMER,
-    pdn_mic: bool,
-    pdn_adc: bool,
-    pdn_dac: bool,
-    dacvola: u8,
-    dacvolb: u8,
-    adcgaina: i8,
-    adcgainb: i8,
-    smplrt: u32
-}
-
 #[inline]
 fn adc_gain_clip(val: i8) -> i8 {
     return if val < -24 {
@@ -275,12 +108,20 @@ fn adc_gain_clip(val: i8) -> i8 {
     }
 }
 
-impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where 
-    II2C: i2c::I2C + Default,
-    II2S: i2s::I2S + Default,
-    ITIMER: timer::Timer + Default
-{
+#[derive(Default)]
+pub struct Params {
+    pdn_mic:  bool,
+    pdn_adc:  bool,
+    pdn_dac:  bool,
+    dacvola:  u8,
+    dacvolb:  u8,
+    adcgaina: i8,
+    adcgainb: i8,
+    smplrt:   u32,
+    adcsel:   u8,
+}
 
+impl Params {
 ///
 ///Power down/up the microphone.
 ///
@@ -357,18 +198,63 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
     }
 
 ///
+///Source selection for adc. Zero for microphone otherwise line-in.
+///
+    pub fn adc_sel(&mut self, val: usize) -> &mut Self {
+        let mut new = self;
+        if val == 0 {
+            new.adcsel = cs4265::AICTL::SELECT::MIC.value;
+        } else {
+            new.adcsel = cs4265::AICTL::SELECT::LINE.value;
+        }
+        new
+    }
+
+}
+
+/**********************************************************************
+ * Ultra2
+ *********************************************************************/
+
+#[derive(Default)]
+pub struct Ultra2<SI2C, SI2S, STIMER> where 
+    SI2C: i2c::I2C,
+    SI2S: i2s::I2S,
+    STIMER: timer::Timer
+{
+    pub cs4265: cs4265::CS4265<SI2C>,
+    pub i2s: SI2S,
+    pub timer: STIMER,
+}
+
+impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where 
+    II2C: i2c::I2C + Default,
+    II2S: i2s::I2S + Default,
+    ITIMER: timer::Timer + Default
+{
+    #[inline]
+    fn delay_1s(&self) {
+        self.timer.one_shot(1_000_000);
+    }
+
+    #[inline]
+    fn delay_2s(&self) {
+        self.timer.one_shot(2_000_000);
+    }
+
+///
 ///The cs4265 uses i2s to communicate audio data to the RPi.
 ///
-    fn cfg_i2s(&self) -> Result<(), ERROR> {
+    fn cfg_i2s(&self, params: &Params) -> Result<(), ERROR> {
         debug::out("ultra2.cfg_i2s(): Configuring RPi i2s.\r\n");
         let mut pcm = i2s::Params::default();
 
-        pcm.rxon(!self.pdn_adc). //rxon is the opposite of power down
-            txon(!self.pdn_dac).
+        pcm.rxon(!params.pdn_adc). //rxon is the opposite of power down
+            txon(!params.pdn_dac).
             fs_master(false).
             clk_master(false).
-            chlen(32,32).       //FIXME: CS4265 has a 2x32bit frame length?
-            smplrt(self.smplrt);
+            chlen(32,32).
+            smplrt(params.smplrt);
 
         pcm.rx.ch1.enable(true).
                    width(32). //Sample width must be 32 bits for i2s.
@@ -394,14 +280,12 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         return Ok(());
     }
 
-    fn cfg_cs4265(&mut self) -> Result<(), ERROR> {
+    fn cfg_cs4265(&mut self, params: &Params) -> Result<(), ERROR> {
         debug::out("ultra2.cfg_cs4265(): Configuring CS4265.\r\n");
 
 //Power down CS4265.
         debug::out("ultra2.cfg_cs4265(): Powering down CS4265 for configuration.\r\n");
-        if let Err(err) = self.power_down() {
-            return Err(err);
-        }
+        self.power_down()?;
         debug::out("ultra2.cfg_cs4265(): CS4265 Powered down. Continuing configuration.\r\n");
 
 //Set DAC control.
@@ -416,13 +300,11 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
             cs4265::ADCCTL::ADC_DIF::I2S24BIT         + //Use I2S protocol.
             cs4265::ADCCTL::HPFFREEZE::CLEAR          + //Leave the dc bias filter unfrozen.
             cs4265::ADCCTL::MUTEADC::CLEAR            + //Unmuted.
-            cs4265::ADCCTL::MS::SET                     //Set to master. FIXME: Speakers hum if this isn't clear.
+            cs4265::ADCCTL::MS::SET                     //Set to master.
         );
 
 //Set clock for sample rate and Ultra2 board's clock rate (12.288 MHz).
-        if let Err(err) = self.cs4265.modify_clk(self.smplrt, 12_288_000) {
-            return Err(ERROR::CS4265(err));
-        }
+        self.cs4265.modify_clk(params.smplrt, 12_288_000)?;
 
 //Set signal selection.
         self.cs4265.reg.SIGSEL.modify (
@@ -430,29 +312,28 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
             cs4265::SIGSEL::LOOP::CLEAR      //Disable loopback.
         );
 
-//Set gain to 0 dB.
-        self.cs4265.reg.PGAA.write(cs4265::PGAA::GAIN.val(self.adcgaina as u8));
-        self.cs4265.reg.PGAB.write(cs4265::PGAB::GAIN.val(self.adcgainb as u8));
+//Set gain.
+        self.cs4265.reg.PGAA.write(cs4265::PGAA::GAIN.val(params.adcgaina as u8));
+        self.cs4265.reg.PGAB.write(cs4265::PGAB::GAIN.val(params.adcgainb as u8));
 
 //Set soft ramp, zero crossing detection and line level.
         self.cs4265.reg.AICTL.modify (
             cs4265::AICTL::PGASOFT::SET + //Use soft ramp on mute and data loss.
             cs4265::AICTL::PGAZERO::SET + //Use zero crossing detection.
-            cs4265::AICTL::SELECT::LINE   //Line level.
+            cs4265::AICTL::SELECT.val(params.adcsel) //Select microphone or line.
         );
 
 //Volume.
         self.cs4265.reg.DACVOLA.write(
-            cs4265::DACVOLA::VOL.val(self.dacvola)
+            cs4265::DACVOLA::VOL.val(params.dacvola)
         );
 
         self.cs4265.reg.DACVOLB.write(
-            cs4265::DACVOLB::VOL.val(self.dacvolb)
+            cs4265::DACVOLB::VOL.val(params.dacvolb)
         );
 
 //Set soft ramp, zero crossing detection and invert.
         self.cs4265.reg.DACCTL2.modify ( 
-//FIXME: Possible anomaly Bit 0 is reserved and set - different from datasheet which has bit cleared.
             cs4265::DACCTL2::DACSOFT::SET     + //Use soft ramp on mute and data loss.
             cs4265::DACCTL2::DACZERO::SET     + //Use zero crossing detection.
             cs4265::DACCTL2::INVERTDAC::CLEAR   //Do not invert output.
@@ -490,9 +371,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 
 //Load configuration.
         debug::out("ultra2.cfg_cs4265(): Loading CS4265 configuration registers.\r\n");
-        if let Err(err) = self.cs4265.ld_regs() {
-            return Err(ERROR::CS4265(err));
-        }
+        self.cs4265.ld_regs()?;
 
 //Print status of CS4265.
 //         if let Err(err) = self.cs4265.print_status() {
@@ -518,7 +397,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         } else {
             debug::out("ultra2.reset(): Releasing reset. Waiting two seconds for settle.\r\n");
             GPSET::default().GPSET0.modify(GPSET0::PSET5::SET);
-            self.timer.one_shot(2_000_000);
+            self.delay_2s();
             debug::out("ultra2.reset(): Reset released.\r\n");
         }
     }
@@ -529,17 +408,15 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
     pub fn power_up(&mut self) -> Result<(), ERROR> {
         debug::out("ultra2.power_up(): Powering up.\r\n");
         self.cs4265.reg.POWERCTL.write (
-            cs4265::POWERCTL::FREEZE::CLEAR                     + //Thaw the registers.
-            cs4265::POWERCTL::PDN_MIC.val(self.pdn_mic as u8)   + //Power down/up microphone.
-            cs4265::POWERCTL::PDN_ADC.val(self.pdn_adc as u8)   + //Power down/up the ADC
-            cs4265::POWERCTL::PDN_DAC.val(self.pdn_dac as u8)   + //Power down/up DAC
-            cs4265::POWERCTL::PDN::CLEAR                          //Power up device.
+            cs4265::POWERCTL::FREEZE::CLEAR  + //Thaw the registers.
+            cs4265::POWERCTL::PDN_MIC::CLEAR + //Power up microphone.
+            cs4265::POWERCTL::PDN_ADC::CLEAR + //Power up the ADC
+            cs4265::POWERCTL::PDN_DAC::CLEAR + //Power up DAC
+            cs4265::POWERCTL::PDN::CLEAR       //Power up device.
         );
 
-        if let Err(err) = self.cs4265.ld_reg(RegisterAddress::POWERCTL) {
-            return Err(ERROR::CS4265(err));
-        }
-        self.timer.one_shot(2_000_000);
+        self.cs4265.ld_reg(RegisterAddress::POWERCTL)?;
+        self.delay_1s();
         
         //Print status of CS4265.
 //         if let Err(err) = self.cs4265.print_status() {
@@ -568,10 +445,8 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
             cs4265::POWERCTL::PDN::SET       //Power down device.
         );
 
-        if let Err(err) = self.cs4265.ld_reg(RegisterAddress::POWERCTL) {
-            return Err(ERROR::CS4265(err));
-        }
-        self.timer.one_shot(2_000_000);
+        self.cs4265.ld_reg(RegisterAddress::POWERCTL)?;
+        self.delay_1s();
 
         //Print status of CS4265.
 //         if let Err(err) = self.cs4265.print_status() {
@@ -595,43 +470,28 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 
 //Select the reset pin on the RPi.
         GPFSEL::default().fsel_ultra2();
-        
 //Bring the board out of reset.
         self.reset(false);
-
 //Initialize CS4265.
-        if let Err(err) = self.cs4265.init() {
-            return Err(ERROR::CS4265(err));
-        }
-
+        self.cs4265.init()?;
 //Verify local copy of registers matches CS4265 registers.
 //         if let Err(err) = self.cs4265.verify_regs() {
 //             return Err(ERROR::CS4265(err));
 //         }
-
         debug::out("Ultra2.init(): Ultra2 initialized.\r\n");
         return Ok(());
     }
 
 ///
-///Configure the RPi I2S bus and the CS4265 on the ultra2.
-///
-///After configuration:
-/// If applicable write data to I2S.
-/// Enable I2S to start processing.
-/// Use Ultra2::pdn(false) to power up CS4265.
+///Load and configure the RPi I2S bus and the CS4265 on the ultra2.
 ///
 ///
-    pub fn cfg(&mut self) -> Result<(), ERROR> {
+    pub fn load(&mut self, params: &Params) -> Result<(), ERROR> {
 //Configure the RPi i2s bus for communicating with the Ultra2 board.
-        if let Err(err) = self.cfg_i2s() {
-            return Err(err);
-        }
+        self.cfg_i2s(params)?;
 
 //Configure the CS4265.
-        if let Err(err) = self.cfg_cs4265() {
-            return Err(err);
-        }
+        self.cfg_cs4265(params)?;
 
         debug::out("ultra2.cfg(): Ultra2 configured.\r\n");
         return Ok(());

@@ -24,4 +24,4 @@ register = "0.3.2"
 r0 = "0.2.2"
 
 [dependencies.peripherals]
-path="../../rpibmtkr/peripherals"
+path="../../hardware/peripherals"

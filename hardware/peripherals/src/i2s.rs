@@ -40,7 +40,6 @@ use crate::clk::PCMCTL;
 ///Module error definitions.
 ///
 pub enum ERROR {
-///
     TIMEOUT,
     SYNC,
     FLOW
@@ -625,8 +624,9 @@ impl I2S for PCM {
 //Set thresholds.
         debug::out("pcm.load(): Set FIFO thresholds.\r\n");
         self.CS_A.modify (
-            CS_A::RXTHR::B  + //RXR set when FIFO is less than full.
-            CS_A::TXTHR::B    //TXW set when FIFO is one sample shy of full.
+            CS_A::RXSEX::SET + //Extend sign bit to fill whole width.
+            CS_A::RXTHR::C   + //RXR set when FIFO is less than full.
+            CS_A::TXTHR::D     //TXW set when FIFO is one sample shy of full.
         );
         PCM::wait_1sec();
 

@@ -18,13 +18,13 @@
 #######################################################################
 
 #Build
-TARGET = aarch64-unknown-none
+TARGET = aarch64-unknown-none-softfloat
 KERNEL = kernel8
 KERNEL_IMAGE = kernel8.img
 
 #Bootloader
 TX_PATH = ../bootloader/tx
-TX_EXE  = $(TX_PATH)/rpi3serbtldr_tx
+TX_EXE  = $(TX_PATH)/bootloader_tx
 TX_DEV  = /dev/ttyACM0
 TX_ARGS = -b 115200 -j -t 8000 -p $(TX_DEV) -e
 
@@ -57,8 +57,13 @@ clean:
 	$(MAKE) -C ./startup clean
 
 timer: ./examples/timer.rs ./startup/src/startup.rs
-	cargo xrustc --example timer --target=$(TARGET) --release -- --emit asm
+	cargo xrustc --example timer --target=$(TARGET) --release
 	cp ./target/$(TARGET)/release/examples/timer ./$(KERNEL)
+	cargo objcopy -- --strip-all -O binary ./$(KERNEL) ./$(KERNEL_IMAGE)
+
+exception: ./examples/exception.rs ./startup/src/startup.rs
+	cargo xrustc --example exception --target=$(TARGET) --release
+	cp ./target/$(TARGET)/release/examples/exception ./$(KERNEL)
 	cargo objcopy -- --strip-all -O binary ./$(KERNEL) ./$(KERNEL_IMAGE)
 
 load:

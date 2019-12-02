@@ -40,8 +40,6 @@ pub unsafe fn __unsafe_main() -> ! {
         fn main() -> !; //Forward declaration of main().
     }
 
-
-
 //Initialze startup subsystems.
     uart::Uart0::init();
     exceptions::init();
@@ -77,10 +75,10 @@ pub unsafe extern "C" fn rinit() -> ! {
 #[no_mangle]
 pub unsafe extern "C" fn _boot() -> ! {
     use cortex_a::{asm, regs::*};
+    use super::STACK_START;
 
     const CORE_0:      u64 = 0;
     const CORE_MASK:   u64 = 0x3;
-    const STACK_START: u64 = 0x40_0000; //0x8_0000;
     const EL2:         u32 = CurrentEL::EL::EL2.value;
 
     if CORE_0 == MPIDR_EL1.get() & CORE_MASK && EL2 == CurrentEL.get() {

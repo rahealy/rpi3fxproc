@@ -13,22 +13,24 @@
 #  $ make clean release
 #
 
-TARGET = aarch64-unknown-none
+KERNEL = kernel8
+KERNEL_IMAGE = kernel8.img
+TARGET = aarch64-unknown-none-softfloat
 BINARY = bootloader_rx
 
 all: debug
 
 debug:
-	cargo xrustc --target=$(TARGET) -- --emit asm
-	cp ./target/$(TARGET)/debug/$(BINARY) ./kernel8.img
-	cargo objcopy -- --strip-all -O binary ./kernel8.img
+	cargo xrustc --target=$(TARGET)
+	cp ./target/$(TARGET)/debug/$(BINARY) ./$(KERNEL)
+	cargo objcopy -- --strip-all -O binary ./$(KERNEL) ./$(KERNEL_IMAGE)
 
 release:
-	cargo xrustc --target=$(TARGET) --release -- --emit asm
-	cp ./target/$(TARGET)/release/$(BINARY) ./kernel8.img
-	cargo objcopy -- --strip-all -O binary ./kernel8.img
+	cargo xrustc --target=$(TARGET) --release
+	cp ./target/$(TARGET)/release/$(BINARY) ./$(KERNEL)
+	cargo objcopy -- --strip-all -O binary ./$(KERNEL) ./$(KERNEL_IMAGE)
 
 clean:
 	cargo clean
-	-rm $(BINARY)
-	-rm ./kernel8.img
+	-rm $(KERNEL)
+	-rm $(KERNEL_IMAGE)

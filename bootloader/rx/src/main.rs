@@ -17,7 +17,7 @@ mod startup; //Pull in startup code.
 /// * `_info` - Unused. Required by the rust panic handler function spec.
 ///
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! { loop {} }
+fn panic(_info: &PanicInfo) -> ! { loop {cortex_a::asm::wfe();} }
 
 
 ///
@@ -95,7 +95,7 @@ enum State {
 /// Receive code over serial port UART0 and execute.
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
-fn main() -> ! {    
+fn main() -> ! {
     Uart0::init();
 
     let uart = Uart0::default();
@@ -177,4 +177,5 @@ fn main() -> ! {
             }
         }
     }
+//   loop {cortex_a::asm::wfe();}
 }

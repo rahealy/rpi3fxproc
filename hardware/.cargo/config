@@ -1,0 +1,16 @@
+#
+# config
+#  Pass additional flags to cargo when building for the 
+#  aarch64-unknown-none target used by the RPi3. This file
+#  also applies to sub-crates.
+#
+# Derived from:
+#  https://github.com/rust-embedded/rust-raspi3-OS-tutorials/tree/master/01_bareminimum
+#
+
+[target.aarch64-unknown-none-softfloat]
+rustflags = [
+  "-C", "link-arg=-Tsrc/link.ld",     #Use linker script src/link.ld
+  "-C", "target-cpu=cortex-a53",      #RPi3 CPU is a cortex-a53 variant
+  "-C", "relocation-model=pic",       #Addresses in code need to be relative to current progam counter.
+] 

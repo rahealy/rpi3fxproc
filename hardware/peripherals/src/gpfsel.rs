@@ -61,6 +61,12 @@ register_bitfields! {
         FSEL3 OFFSET(9) NUMBITS(3) [
             INPUT = 0b000,
             SCL1 = 0b100 // I2C1 SCL1 - Alternate function 0
+        ],
+
+/// RPi I/O Pin 29 (BCM5) used as reset for the ultra2.
+        FSEL5 OFFSET(15) NUMBITS(3) [
+            INPUT  = 0b000,
+            OUTPUT = 0b001
         ]
     ],
 
@@ -201,7 +207,14 @@ impl GPFSEL {
         self.GPFSEL0.modify(GPFSEL0::FSEL2::SDA1 + 
                             GPFSEL0::FSEL3::SCL1);
     }
-    
+
+///
+///Select GPIO pin functions for the Ultra2 hat.
+///
+    pub fn fsel_ultra2(&self) {
+        self.GPFSEL0.modify(GPFSEL0::FSEL5::OUTPUT);
+    }
+
 ///
 ///Select alternate GPIO pin functions for the I2S peripheral.
 ///

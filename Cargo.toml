@@ -8,21 +8,22 @@ edition = "2018"
 cortex-a = "2.3.1"
 register = "0.3.2"
 r0 = "0.2.2"
+heapless = "0.5.1"
+linked_list_allocator = "0.6.4"
 
-# [dependencies.rpibmtkr]
-# path = "rpibmtkr"
-# 
-# [dependencies.rpi3serbtldr]
-# path = "rpi3serbtldr"
-# 
-# [dependencies.drivers]
-# path = "drivers"
-# 
 [dependencies.peripherals]
-path = "rpibmtkr/peripherals"
+path = "hardware/peripherals"
 
 [dependencies.hats]
-path = "rpibmtkr/hats"
+path = "hardware/hats"
 
 [dependencies.startup]
-path = "rpibmtkr/startup"
+path = "hardware/startup"
+
+[dependencies.effects]
+path = "effects"
+
+[dependencies.common]
+path = "common"
+
+
