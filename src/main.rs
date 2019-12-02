@@ -118,10 +118,10 @@ fn init_ultra2() {
              adc_gain_b(0).   //Unity Gain.
              dac_vol_a(0xFF). //Full volume.
              dac_vol_b(0xFF). //Full volume.
-             adc_sel(0).      //Select microphone
-             pdn_mic(false).  //Use microphone.
-             pdn_adc(false).  //Use ADC.
-             pdn_dac(false).  //Use DAC
+             adc_sel(0).      //Select on-board microphones for adc input.
+             pdn_mic(false).  //Power up microphone.
+             pdn_adc(false).  //Power up ADC.
+             pdn_dac(false).  //Power up DAC
              smplrt(SAMPLE_RATE_USIZE as u32); //48kHz sample rate.
 
     if let Err(err) = ultra2.load(&u2params) {
@@ -131,11 +131,11 @@ fn init_ultra2() {
         panic!();
     }
 
-//Initially fill buffer with zeroes.
+//Initially fill i2s FIFO with zeroes.
     debug::out("rpi3fxproc::init_ultra2(): Zero transmit buffer.\r\n");
     i2s.tx_fill(0x00000000);
 
-//Turn on i2s transmitter.
+//Turn on i2s.
     debug::out("rpi3fxproc::init_ultra2(): Turn on RPi i2s TX and RX.\r\n");
     i2s.tx_on(true);
     i2s.rx_on(true);
@@ -149,8 +149,8 @@ fn init_ultra2() {
         panic!();
     }
 
-    debug::out("rpi3fxproc::init_ultra2(): RPi i2s status:\r\n");
-    i2s.print_status();
+//     debug::out("rpi3fxproc::init_ultra2(): RPi i2s status:\r\n");
+//     i2s.print_status();
 
     debug::out("rpi3fxproc::init_ultra2(): Initialized.\r\n");
 }

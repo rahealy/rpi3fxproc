@@ -3,6 +3,7 @@
 **/*.img
 **/kernel*
 
+
 # Development directories contain miscelaneous documentation, code, 
 # notes, and files which came in useful at some point but aren't
 # appropriate to include in the repo.

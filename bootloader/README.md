@@ -15,7 +15,7 @@ The bootloader started out as a raspbootin clone described here:
  * [https://wiki.osdev.org/ARM_RaspberryPi#Boot-from-serial_kernel]
  * [https://github.com/rust-embedded/rust-raspi3-OS-tutorials/tree/master/06_raspbootin64] 
 
-There were protocol features I felt were missing from raspbootin so rpi3serbtldr emerged.
+There were protocol features I felt were missing from raspbootin so bootloader emerged.
 
 Upon successful transmission of the executable image the transmitter will echo any responses from the serial port to stdout.
 
@@ -66,7 +66,7 @@ The Broadcom chip which the RPi3 is based on was designed in a way that makes th
 
 **Replace kernel with receiver (rx):**
 
- * Copy kernel8.img from build directory to "/boot/kernel8.img" on the SD card.
+ * Copy kernel8.img from "bootloader/rx" directory to "/boot/kernel8.img" on the SD card.
 
 **Boot Raspbian Linux Instead**
 
@@ -114,24 +114,26 @@ RPi UART0 uses 3.3v logic while the Arduino uses 5.0v logic requiring a passive 
 ## Example Session
 
 ```
-rpi3serbtldr/tx/target/debug$ ./rpi3serbtldr_tx -b 115200 -p "/dev/ttyACM0" -f "kernel8.img" -t 8000
+$ ./bootloader/tx/bootloader_tx -b 115200 -j -t 8000 -p /dev/ttyACM0 -e -f "./kernel8.img"
 
-rpi3serbtldr_tx
----------------
-File: kernel8.img
+bootloader_tx
+-------------
+File: ./kernel8.img
 Port: "/dev/ttyACM0"
 Baud: 115200
 Timeout(ms): 8000
+JTAG: Yes
+Wait: No
+Read and Echo: Yes
 
 Begin...
-Timed out while trying to read port. 10 retries left.
-Timed out while trying to read port. 9 retries left.
-Receieved break signal.
-Sent file size: 1448.
+Received break signal.
+Send JTAG instruction.
+Got OK signal.
+Sent file size: 65152.
 Got OK signal.
 Sending file.
 Got OK signal.
-File sent successfully. Done.
-
-rpi3serbtldr/tx/target/debug$
+Send JUMP instruction.
+bootloader_tx - Read port and echo output.
 ```

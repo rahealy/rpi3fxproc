@@ -24,9 +24,9 @@
  * SOFTWARE.
  */
 
-/*
- * Set up virtual memory.
- */
+///
+/// Set up virtual memory.
+///
 
 use cortex_a::{barrier, regs::*};
 use super::MMIO_BASE;

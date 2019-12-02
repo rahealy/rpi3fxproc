@@ -90,8 +90,8 @@ fn main() {
 
 //Tell user what will happen.
     println!("");
-    println!("rpi3serbtldr_tx");
-    println!("---------------");
+    println!("rpi3fxproc bootloader_tx");
+    println!("------------------------");
     println!("File: {}", &fname);
     println!("Port: \"{}\"", &port_name);
     println!("Baud: {}", &baud_rate);
