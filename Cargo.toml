@@ -9,6 +9,11 @@ cortex-a = "2.3.1"
 register = "0.3.2"
 r0 = "0.2.2"
 linked_list_allocator = "0.6.4"
+libm = "0.2.0"
+
+# [dependencies.compiler_builtins]
+# git = "https://github.com/rust-lang/compiler-builtins"
+# features = ["c"]
 
 [dependencies.peripherals]
 path = "hardware/peripherals"
@@ -19,10 +24,8 @@ path = "hardware/hats"
 [dependencies.startup]
 path = "hardware/startup"
 
-[dependencies.effects]
-path = "effects"
+[dependencies.rack]
+path = "rack"
 
 [dependencies.common]
 path = "common"
-
-

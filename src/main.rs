@@ -38,12 +38,10 @@ use peripherals::i2s::*;
 use peripherals::timer::{Timer1};
 use peripherals::uart::Uart0;
 use peripherals::MMIO_BASE;
-use effects::SAMPLE_RATE_USIZE;
-use effects::SampleType;
+use rack::effects::SAMPLE_RATE_USIZE;
 use linked_list_allocator::LockedHeap;
 
 mod queue;
-mod rack;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -170,9 +168,10 @@ fn print_splash() {
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
-    use crate::rack::connection::factory::{From, To, Connect};
-    use common::buffer::{Read, Write, Size, Amount};
-
+    use rack::unit::connection::factory::{From, To, Connect};
+    use rack::unit::{Unit, EffectIdx};
+    use common::buffer::{Size, Amount};
+ 
     Uart0::init();
     I2C1::init();
     I2S0::init();
@@ -184,23 +183,23 @@ fn main() -> ! {
 
     sound_test();
 
-//    let mut rxt = queue::RxTest::default();
+//    let mut rx = queue::RxTest::default();
     let mut rx  = queue::Rx::default();
     let mut tx  = queue::Tx::default();
-    let mut u0  = rack::Unit::new();
+    let mut u0  = Unit::new();
 
     debug::out("rpi3fxproc::main(): Connecting effects.\r\n");
 
-    let connections: [[usize;3]; 4] = [
-        [rack::INPUT_A, 4, 100],  //From Input A to delay0.
-        [4, rack::OUTPUT_A, 100], //From delay0 to Output A
-        [rack::INPUT_B, 5, 100],  //From Input B to delay1.
-        [5, rack::OUTPUT_B, 100], //From delay1 to Output B
+    let connections = [
+        (EffectIdx::InputA, EffectIdx::DelayA,  100), //From Input A to delay0.
+        (EffectIdx::DelayA, EffectIdx::OutputA, 100), //From delay0 to Output A
+        (EffectIdx::InputB, EffectIdx::DelayB,  100), //From Input B to delay1.
+        (EffectIdx::DelayB, EffectIdx::OutputB, 100), //From delay1 to Output B
     ];
 
-    for conn in connections.iter() {
-        if let Err(err) = u0.from(conn[0])        //Input A
-                            .to(conn[1], conn[2]) //Process input of delay 0
+    for (from, to, param) in connections.iter() {
+        if let Err(err) = u0.from(*from)
+                            .to(*to, *param)
                             .connect()
         {
             debug::out(err);
@@ -210,7 +209,12 @@ fn main() -> ! {
 
     debug::out("rpi3fxproc::main(): Queueing effect processing order.\r\n");
 
-    let queue = [rack::INPUT_A, rack::INPUT_B, 4, 5];
+    let queue = [
+        EffectIdx::InputA, 
+        EffectIdx::InputB, 
+        EffectIdx::DelayA, 
+        EffectIdx::DelayB,
+    ];
 
     for effect in queue.iter() {
         if let Err(err) = u0.queue(*effect) {
@@ -245,6 +249,7 @@ fn main() -> ! {
     }
 }
 
+
 ///
 ///Implement a basic 2 second delay.
 ///
@@ -269,7 +274,6 @@ fn echo_test() {
     let mut rd: Offset = Offset(0);
     let mut wr: Offset = Offset(DELAY * NUM_CHANNELS);
     let mut buf        = [0 as i32; DELAY_BUF_SZ];
-    let mut val: i32   = 0x007FFFFF;
 
     loop {
         while i > 0 {

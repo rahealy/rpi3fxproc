@@ -3,6 +3,7 @@
 **/*.img
 **/kernel*
 **/Cargo.lock
+**/math
 
 # Development directories contain miscelaneous documentation, code, 
 # notes, and files which came in useful at some point but aren't

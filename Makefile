@@ -51,8 +51,8 @@ clean:
 realclean: clean
 	$(MAKE) -C ./bootloader clean
 	$(MAKE) -C ./common clean
-	$(MAKE) -C ./effects clean
 	$(MAKE) -C ./hardware clean
+	$(MAKE) -C ./rack clean
 
 _bootloader:
 	$(MAKE) -C ./bootloader release

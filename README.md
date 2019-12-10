@@ -7,7 +7,7 @@ Implements a bare metal OS-less full-duplex audio effects processor using a Rasp
 
 ## Story
 
-Building an audio effects processor has been on my (rahealy's) bucket-list for decades. After quitting the software support job I was working to pay the bills I decided to take a vacation and pursue my true passion and calling in life. In that time I learned another programming language (rust), learned some of the advanced internals of ARMv8, AARCH64, Execution priviledges, how MMU's work, multi-core CPUs, as well as getting a good start on building an audio effects processor. 
+Building an audio effects processor has been on my (rahealy's) bucket-list for decades. After quitting the software support job I was working to pay the bills I decided to take a vacation and pursue my true passion and calling in life. In that time I learned another programming language (rust), learned some of the advanced internals of ARMv8, AARCH64, Execution privileges, how MMU's work, multi-core CPUs, as well as getting a good start on building an audio effects processor. 
 
 Please feel free to take or leave what you find here. Be good, follow the licenses, and give credit where it's due. Also please feel free to open an issue if you have any questions. I am happy to (over)share what I've learned.
 
@@ -41,7 +41,7 @@ Details about the Audio Injector Ultra 2 sound card by flatmax:
 
 ### Dependencies
 
-Install cargo-xbuild and cargo-binutils libraries. These do most of the work to make sure the rust dependencies for generating ARM code for the RPi3 are met.
+Install cargo-xbuild and cargo-binutils libraries. These do most of the work to make sure the rust dependencies for generating ARM code for the Raspberry Pi 3 are met.
 
 ```
 $ cargo install cargo-xbuild cargo-binutils

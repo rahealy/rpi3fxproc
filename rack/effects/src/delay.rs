@@ -25,7 +25,7 @@ SOFTWARE.
 use super::{SAMPLE_RATE, SAMPLE_RATE_USIZE, SampleType};
 use common::offset::{Offset};
 use crate::Effect;
-use peripherals::debug;
+// use peripherals::debug;
 
 const DELAY_SECONDS: usize = 2;
 const DELAY_MAX:     usize = (SAMPLE_RATE_USIZE * DELAY_SECONDS);
@@ -100,7 +100,7 @@ impl Effect for Delay {
         self.buf = [SampleType::default(); DELAY_BUF_SZ];
     }
 
-    fn num_params(&mut self) -> usize { 4 }
+    fn num_params(&self) -> usize { 4 }
 
     fn set_param(&mut self, idx: usize, val: SampleType) {
         match idx {

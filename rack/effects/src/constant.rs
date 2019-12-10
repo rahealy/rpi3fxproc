@@ -21,26 +21,53 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-#![no_std]
 
-pub type SampleType = f32;
-pub const SAMPLE_RATE: SampleType = 48000.0;
-pub const SAMPLE_RATE_USIZE: usize = SAMPLE_RATE as usize;
+use super::SampleType;
+use crate::Effect;
 
-pub mod thru;
-pub mod delay;
-pub mod pwm;
-pub mod sine;
-pub mod constant;
+/***********************************************************************
+ * Constant
+ **********************************************************************/
 
-///
-///Common trait implemented by all effects.
-///
-pub trait Effect {
-    fn process(&mut self, smpl_in: SampleType) -> SampleType { smpl_in }
-    fn reset(&mut self) {}
-    fn num_params(&mut self) -> usize { 0 }
-    fn set_param(&mut self, _idx: usize, _val: SampleType) {}
-    fn get_param(&mut self, _idx: usize) -> SampleType { SampleType::default() }  
+#[derive(Default)]
+pub struct Constant {
+    pub val: SampleType, //Feedback.
 }
 
+impl Effect for Constant {
+///
+///Process.
+///
+    fn process(&mut self, _smpl_in: SampleType) -> SampleType {
+        self.val
+    }
+
+///
+///Reset delay to defaults.
+///
+    fn reset(&mut self) {
+        self.val = SampleType::default();
+    }
+
+    fn num_params(&self) -> usize { 1 }
+
+    fn set_param(&mut self, _idx: usize, val: SampleType) {
+        self.val = val;
+    }
+
+    fn get_param(&mut self, _idx: usize) -> SampleType { 
+        self.val
+    }
+}
+
+impl Constant {
+///
+///Set constant value.
+///
+    pub fn val(&mut self, val: SampleType) -> &mut Self {
+        let mut new = self;
+        new.val = val;
+        new
+    }
+}
+ 

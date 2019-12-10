@@ -5,11 +5,12 @@ authors = ["Richard A. Healy <rahealy@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
-# libm = "0.1.4"
-# rustfft = "3.0.0"
-
-[dependencies.peripherals]
-path="../hardware/peripherals"
+biquad = "0.3.0"
 
 [dependencies.common]
-path="../common"
+path="../../common"
+
+[dependencies.num-traits]
+version = "0.2"
+default-features = false
+features = ["libm"]

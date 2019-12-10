@@ -28,58 +28,13 @@
 ///
 
 use peripherals::i2s::*;
-use effects::SampleType;
+use rack::effects::SampleType;
 use common::buffer::{Buffer, Read, Write};
 
 trait I2S {
-    #[inline]
     fn i2s(&self) -> I2S0 { I2S0::default() }
 }
 
-
-///
-///Manages I/O for the I2S bus peripherals.
-///
-#[derive(Default)]
-pub struct Queue {
-    q_a: Buffer<SampleType>,
-    q_b: Buffer<SampleType>,
-}
-
-impl Queue {
-///
-///True if both queues are full.
-///
-    #[inline]
-    pub fn full(&mut self) -> bool { 
-        self.q_a.full_queue() && self.q_b.full_queue() 
-    }
-
-///
-///True if both queues are empty.
-///
-    #[inline]    
-    pub fn empty(&mut self) -> bool { 
-        self.q_a.empty_queue() && self.q_b.empty_queue() 
-    }
-
-///
-///Enqueue channel a/b.
-///
-    #[inline]
-    pub fn enqueue(&mut self, ab: (SampleType, SampleType)) {
-        self.q_a.enqueue(ab.0);
-        self.q_b.enqueue(ab.1);
-    }
-
-///
-///Dequeue channel a/b.
-///
-    #[inline]
-    pub fn dequeue(&mut self) -> (SampleType, SampleType) {
-        (self.q_a.dequeue(), self.q_b.dequeue())
-    }
-}
 
 #[derive(Default)]
 pub struct Rx {
@@ -93,7 +48,7 @@ impl Rx {
 ///
 ///Poll rx FIFO and drain when ready.
 ///
-    #[inline]
+    
     pub fn poll(&mut self) {
         if self.i2s().CS_A.is_set(CS_A::RXERR) {
             self.errcnt += 1;
@@ -114,6 +69,7 @@ impl Rx {
 ///RxTest()
 /// Outputs a known good signal instead of input from i2s.
 ///
+#[allow(dead_code)]
 pub struct RxTest {
     pub queue: Buffer<SampleType>,
     pub errcnt: usize,
@@ -121,6 +77,7 @@ pub struct RxTest {
     pub val: SampleType,
 }
 
+#[allow(dead_code)]
 impl Default for RxTest {
     fn default() -> Self {
         RxTest {
@@ -132,13 +89,14 @@ impl Default for RxTest {
     }
 }
 
+#[allow(dead_code)]
 impl I2S for RxTest {}
 
+#[allow(dead_code)]
 impl RxTest {
 ///
 ///Poll rx FIFO and drain. Output a square wave.
 ///
-    #[inline]
     pub fn poll_sq(&mut self) {
         if self.i2s().CS_A.is_set(CS_A::RXERR) {
             self.errcnt += 1;
@@ -158,7 +116,6 @@ impl RxTest {
 ///
 ///Poll rx FIFO and drain. Output total number of samples received.
 ///
-    #[inline]
     pub fn poll_cnt(&mut self) {
         if self.i2s().CS_A.is_set(CS_A::RXERR) {
             self.errcnt += 1;
@@ -187,7 +144,6 @@ impl Tx {
 ///
 ///Poll tx FIFO and fill when ready.
 ///
-    #[inline]
     pub fn poll(&mut self) {
         if self.i2s().CS_A.is_set(CS_A::TXERR) {
             self.errcnt += 1;
