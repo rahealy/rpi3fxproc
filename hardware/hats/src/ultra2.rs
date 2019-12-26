@@ -418,11 +418,11 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
         self.cs4265.ld_reg(RegisterAddress::POWERCTL)?;
         self.delay_1s();
         
-        //Print status of CS4265.
+//         //Print status of CS4265.
 //         if let Err(err) = self.cs4265.print_status() {
 //             return Err(ERROR::CS4265(err));
 //         }
-
+// 
 //         //Verify local copy of registers matches CS4265 registers.
 //         if let Err(err) = self.cs4265.verify_regs() {
 //             return Err(ERROR::CS4265(err));

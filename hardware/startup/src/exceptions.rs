@@ -114,6 +114,25 @@ unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 }
 
 #[no_mangle]
+unsafe extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
+    let uart = Uart0::default();
+    uart.puts("exceptions::current_elx_serror(): Caught exception.\r\n");
+    e.elr_el1 += 4; //Return to first instruction after exception.
+    uart.puts("exceptions::current_elx_serror(): Returning.\r\n");
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_aarch64_synchronous(e: &mut ExceptionContext) {
+    let uart = Uart0::default();
+    uart.puts("exceptions::lower_aarch64_synchronous(): Caught exception.\r\n");
+    e.elr_el1 += 4; //Return to first instruction after exception.
+    uart.puts("exceptions::lower_aarch64_synchronous(): Returning.\r\n");
+}
+
+// unsafe extern "C" fn lower_aarch64_irq(e: &mut ExceptionContext);
+// unsafe extern "C" fn lower_aarch64_serror(e: &mut ExceptionContext);
+
+#[no_mangle]
 unsafe extern "C" fn lower_aarch32_synchronous(e: &mut ExceptionContext) {
     let uart = Uart0::default();
     uart.puts("exceptions::lower_aarch32_synchronous(): Caught exception.\r\n");

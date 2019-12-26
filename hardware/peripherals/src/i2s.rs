@@ -529,7 +529,7 @@ pub struct PCM;
 
 impl ops::Deref for PCM {
     type Target = RegisterBlockPCM;
-
+    #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe { &*Self::ptr() }
     }
@@ -667,6 +667,7 @@ impl I2S for PCM {
 }
 
 impl PCM {
+    #[inline]
     fn ptr() -> *const RegisterBlockPCM {
         PCM_BASE as *const _
     }

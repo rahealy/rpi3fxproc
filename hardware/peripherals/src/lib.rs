@@ -24,10 +24,11 @@
 
 #![no_std]
 
-pub const MMIO_BASE: u32 = 0x3F00_0000; //Peripheral access is derived from this base memory offset.
+pub const MMIO_BASE: u32 = 0x3F000000; //Peripheral access is derived from this base memory offset.
 
 pub mod clk;
 pub mod debug;
+pub mod dma;
 pub mod gpfsel;
 pub mod gplev;
 pub mod gpevt;

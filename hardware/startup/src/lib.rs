@@ -24,12 +24,13 @@
  */
  
 #![no_std]
+#![feature(asm)]
 #![feature(global_asm)]
 
 ///
 ///The stack spans between end of read only code area and 4MB boundary.
 ///
-pub const STACK_START: u64 = 0x0040_0000; //Stack decrements.
+pub const STACK_START: u64 = 0x0080_0000; //Stack decrements.
 pub const MMIO_BASE: usize = 0x3F00_0000; //Peripheral access starts at 1GB boundary.
 
 mod uart;

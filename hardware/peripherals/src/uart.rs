@@ -271,7 +271,7 @@ register_bitfields! {
     ]
 }
 
-const UART0_BASE: u32 = MMIO_BASE + 0x0020_1000;
+const UART0_BASE: u32 = MMIO_BASE + 0x00201000;
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -385,8 +385,8 @@ impl Uart0 {
         uart.LCRH.modify(LCRH::WLEN::EightBit); // 8N1
 
 //Enable UART, RX, and TX
-        uart.CR.write(CR::UARTEN::SET + 
-                      CR::TXE::SET    + 
+        uart.CR.write(CR::UARTEN::SET +
+                      CR::TXE::SET    +
                       CR::RXE::SET);
     }
 
@@ -407,7 +407,6 @@ impl Uart0 {
             if !self.FR.is_set(FR::TXFF) {
                 break;
             }
-
             asm::nop();
         }
 
@@ -457,9 +456,8 @@ impl Uart0 {
         for c in string.chars() {
             // convert newline to carrige return + newline
             if c == '\n' {
-                self.send('\r')
+                self.send('\r');
             }
-
             self.send(c);
         }
     }

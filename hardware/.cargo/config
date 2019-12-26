@@ -14,3 +14,10 @@ rustflags = [
   "-C", "target-cpu=cortex-a53",      #RPi3 CPU is a cortex-a53 variant
   "-C", "relocation-model=pic",       #Addresses in code need to be relative to current progam counter.
 ] 
+
+[target.aarch64-unknown-none]
+rustflags = [
+  "-C", "link-arg=-Tsrc/link.ld",     #Use linker script src/link.ld
+  "-C", "target-cpu=cortex-a53",      #RPi3 CPU is a cortex-a53 variant
+  "-C", "relocation-model=pic",       #Addresses in code need to be relative to current progam counter.
+] 

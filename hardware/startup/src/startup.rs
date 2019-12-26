@@ -23,6 +23,51 @@
  * SOFTWARE.
  */ 
 
+/************************** Register ******************************/
+
+// use register::{cpu::RegisterReadWrite, register_bitfields};
+// 
+// register_bitfields! {
+//     u32,
+//     CPACR_EL1 [
+//         ///Not used.
+//         TTA OFFSET(28) NUMBITS(1) [],
+// 
+//         ///Traps instructions that access registers associated with floating-point
+//         ///and SIMD execution to trap to EL1 when executed from EL0 or EL1
+//         ///
+//         /// 0b00 Trap any instruction in EL0 or EL1
+//         /// 0b01 Trap any instruction in EL0 
+//         /// 0b10 Trap any instruction in EL0 or EL1
+//         /// 0b11 No instructions are trapped
+//         FPEN OFFSET(20) NUMBITS(2) []
+//     ]
+// }
+// 
+// pub struct Reg;
+// 
+// impl RegisterReadWrite<u32, CPACR_EL1::Register> for Reg {
+//     #[inline]
+//     fn get(&self) -> u32 {
+//         let reg;
+//         unsafe {
+//             asm!("mrs $0, CPACR_EL1" : "=r"(reg) ::: "volatile");
+//         }
+//         reg
+//     }
+// 
+//     #[inline]
+//     fn set(&self, value: u32) {
+//         unsafe {
+//             asm!("msr CPACR_EL1, $0" :: "r"(value) :: "volatile")
+//         }
+//     }
+// }
+// 
+// impl Reg {}
+// 
+// pub static CPACR_EL1: Reg = Reg {};
+
 
 /************************** Startup Code ******************************/
 
@@ -67,6 +112,7 @@ pub unsafe extern "C" fn rinit() -> ! {
 }
 
 
+
 ///
 /// Run first. Initializes the RPi CPU and cores and drops into 
 /// Execution state 1 (EL1/Operating System).
@@ -74,7 +120,7 @@ pub unsafe extern "C" fn rinit() -> ! {
 #[link_section = ".text.boot"]
 #[no_mangle]
 pub unsafe extern "C" fn _boot() -> ! {
-    use cortex_a::{asm, regs::*};
+    use cortex_a::{asm, barrier, regs::*};
     use super::STACK_START;
 
     const CORE_0:      u64 = 0;
@@ -91,6 +137,19 @@ pub unsafe extern "C" fn _boot() -> ! {
             );
 
             CNTVOFF_EL2.set(0); //Virtual timer same as physical timer (0 offset.)
+
+
+//For description of CPACR_EL1 See section 4.3.32 in the
+// ARM® Cortex®-A57 MPCore Processor
+// Revision: r1p3
+// Technical Reference Manual
+            //Don't trap the SIMD and FP operations in EL[0,1]
+            asm!("msr CPACR_EL1, $0" :: "r"(0x300000) :: "volatile");
+            //Default 0x33ff is fine.
+            asm!("msr CPTR_EL2, $0" :: "r"(0x33ff) :: "volatile");
+            //Don't trap anything in the hypervisor.
+            asm!("msr HSTR_EL2, xzr" :::: "volatile");
+            barrier::isb(barrier::SY);
 
 //Set up architecture.
             HCR_EL2.modify(HCR_EL2::RW::EL1IsAarch64);
