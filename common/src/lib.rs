@@ -23,6 +23,7 @@ SOFTWARE.
 */
 #![no_std]
 
+pub mod array;
 pub mod buffer;
 pub mod offset;
-pub mod array;
+pub mod prelude;

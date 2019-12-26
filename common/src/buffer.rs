@@ -23,10 +23,43 @@ SOFTWARE.
 */
 
 use crate::offset::{Offset};
+use peripherals::debug;
 
 ///
 /// Fixed length Buffer.
 ///
+/**********************************************************************
+ * Iterators
+ *********************************************************************/
+ 
+///
+///Iterates from rdpos to wrpos wrapping at limit.
+///
+#[derive(Default)]
+pub struct IterIdx {
+    rdpos: Offset,
+    wrpos: usize,
+    limit: usize
+}
+
+pub trait IteratorIdx {
+    fn iter_idx(&self) -> IterIdx { IterIdx::default() }
+}
+
+impl Iterator for IterIdx {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.rdpos.val() != self.wrpos {
+            let idx = self.rdpos.val();
+            self.rdpos.inc(self.limit);
+            Some(idx)
+        } else {
+            None
+        }
+    }
+}
+
 
 /**********************************************************************
  * Buffer
@@ -43,21 +76,19 @@ pub trait Amount {
 }
 
 pub trait Read<T> {
+    fn get(&self, idx: usize) -> T;
     fn next(& mut self) -> T;
-    fn dequeue(& mut self) -> T;
     fn rewind(& mut self) -> ();
     fn empty(& mut self) -> bool;
-    fn empty_queue(& mut self) -> bool;
     fn rdpos(&self) -> usize;
 }
 
 pub trait Write<T> {
+    fn set(&mut self, val: T, idx: usize);
     fn put(&mut self, val:T) -> ();
-    fn enqueue(&mut self, val:T) -> ();
     fn fill(&mut self, val:T) -> ();
     fn reset(& mut self) -> ();
     fn full(& mut self) -> bool;
-    fn full_queue(& mut self) -> bool;
     fn wrpos(&self) -> usize;
     fn copy_from(&mut self, from: &Buffer<T>) -> ();
 }
@@ -66,11 +97,11 @@ pub trait BufferTrait<I>: Read<I> + Write<I> where
     I: Copy + Clone + Default
 {}
 
+
 #[derive(Clone, Copy)]
 pub struct Buffer<S> {
     rdpos: usize,
     wrpos: usize,
-    amt: usize,
     buf: [S; BUFFER_LEN]
 }
 
@@ -81,7 +112,6 @@ impl <I> Default for Buffer<I> where
         Buffer::<I> {
             rdpos: 0,
             wrpos: 0,
-            amt: 0,
             buf: [I::default(); BUFFER_LEN]
         }
     }
@@ -91,15 +121,13 @@ impl <I> Size for Buffer<I> where
     I: Copy + Clone + Default 
 {}
 
-impl <I> Amount for Buffer<I> where 
-    I: Copy + Clone + Default 
-{
-   fn amt(&self) -> usize { self.amt }
-}
-
 impl <I> Read<I> for Buffer<I> where
     I: Copy + Clone + Default
 {
+    fn get(&self, idx: usize) -> I {
+        self.buf[idx]
+    }
+
     fn next(& mut self) -> I {
         let idx = self.rdpos;
 
@@ -115,27 +143,12 @@ impl <I> Read<I> for Buffer<I> where
         }
     }
 
-    fn dequeue(& mut self) -> I {
-        if self.amt == 0 {
-            I::default()
-        } else {
-            let idx = self.rdpos;
-            self.rdpos = Offset(self.rdpos).inc(BUFFER_LEN).val();
-            self.amt -= 1;
-            self.buf[idx]
-        }
-    }
-
     fn rewind(& mut self) -> () {
         self.rdpos = 0;
     }
     
     fn empty(& mut self) -> bool {
         (self.rdpos == self.wrpos)
-    }
-    
-    fn empty_queue(& mut self) -> bool {
-        (self.amt == 0)
     }
 
     fn rdpos(&self) -> usize { 
@@ -147,12 +160,8 @@ impl <I> Read<I> for Buffer<I> where
 impl <I> Write<I> for Buffer<I> where
     I: Copy + Clone + Default
 {
-    fn enqueue(&mut self, val:I) -> () {
-        if self.amt < BUFFER_LEN {
-            self.buf[self.wrpos] = val;
-            self.wrpos = Offset(self.wrpos).inc(BUFFER_LEN).val();
-            self.amt += 1;
-        }
+    fn set(&mut self, val:I, idx: usize) -> () {
+        self.buf[idx] = val;
     }
 
     fn put(&mut self, val:I) -> () {
@@ -175,15 +184,10 @@ impl <I> Write<I> for Buffer<I> where
     fn reset(& mut self) -> () {
         self.rdpos = 0;
         self.wrpos = 0;
-        self.amt   = 0;
     }
 
     fn full(& mut self) -> bool {
         (self.wrpos == BUFFER_LEN)
-    }
-
-    fn full_queue(& mut self) -> bool {
-        (self.amt == BUFFER_LEN)
     }
 
     fn copy_from(&mut self, from: &Buffer<I>) -> () {
@@ -198,8 +202,19 @@ impl <I> Write<I> for Buffer<I> where
 }
 
 impl <I> BufferTrait<I> for Buffer<I> where
+    I: Copy + Clone + Default {}
+
+impl <I> IteratorIdx for Buffer<I> where
     I: Copy + Clone + Default
-{}
+{
+    fn iter_idx(&self) -> IterIdx {
+        IterIdx {
+            rdpos: Offset(self.rdpos),
+            wrpos: self.wrpos,
+            limit: self.size(),
+        }
+    }
+}
 
 ///
 /// Maps a function to two buffers contained in an array slice where 
@@ -280,6 +295,79 @@ pub fn distribute<F: Copy> (bufs: &mut[Buffer<F>],
             }
             bufs[dstidx].rdpos = 0;
             bufs[dstidx].wrpos = BUFFER_LEN;
+        }
+    }
+}
+
+/**********************************************************************
+ * Queue
+ **********************************************************************/
+
+pub struct Queue<S> {
+    pub buf: Buffer<S>,
+    pub amt: usize,
+}
+
+impl <I> Default for Queue<I> where
+    I: Copy + Clone + Default
+{
+    fn default() -> Queue<I> {
+        Queue {
+            buf: Buffer::<I>::default(),
+            amt: 0,
+        }
+    }
+}
+
+impl <I> Queue<I> where 
+    I: Copy + Clone + Default
+{
+    pub fn enqueue(&mut self, val:I) -> () {
+        if self.amt < BUFFER_LEN {
+            let a = val;
+            self.buf.buf[self.buf.wrpos] = a; //I::default(); //val;
+            self.buf.wrpos = Offset(self.buf.wrpos).inc(BUFFER_LEN).val();
+            self.amt += 1;
+        }
+    }
+
+
+    pub fn dequeue(& mut self) -> I {
+        if self.amt == 0 {
+            I::default()
+        } else {
+            let idx = self.buf.rdpos;
+            self.buf.rdpos = Offset(self.buf.rdpos).inc(BUFFER_LEN).val();
+            self.amt -= 1;
+            self.buf.buf[idx]
+        }
+    }
+
+    #[inline]
+    pub fn full_queue(& mut self) -> bool {
+        (self.amt == BUFFER_LEN)
+    }
+
+    #[inline]
+    pub fn empty_queue(&self) -> bool {
+        (self.amt == 0)
+    }
+}
+
+impl <I> Amount for Queue<I> where 
+    I: Copy + Clone + Default 
+{
+   fn amt(&self) -> usize { self.amt }
+}
+
+impl <I> IteratorIdx for Queue<I> where
+    I: Copy + Clone + Default
+{
+    fn iter_idx(&self) -> IterIdx {
+        IterIdx {
+            rdpos: Offset(self.buf.rdpos),
+            wrpos: self.buf.wrpos,
+            limit: self.buf.size(),
         }
     }
 }

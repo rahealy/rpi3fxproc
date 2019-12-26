@@ -37,6 +37,7 @@ impl From<usize> for Offset {
 }
 
 impl Offset {
+    #[inline]
     pub fn inc(&mut self, lim: usize) -> &mut Self {
         let mut new = self;
         new.0 += 1;
@@ -45,7 +46,7 @@ impl Offset {
         }
         new
     }
-    
+
     pub fn add(&mut self, val: usize) -> &mut Self {
         let mut new = self;
         new.0 += val;
@@ -64,8 +65,8 @@ impl Offset {
         new
     }
 
+    #[inline]
     pub fn val(&self) -> usize {
         self.0
     }
 }
- 
