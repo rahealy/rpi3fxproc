@@ -1,0 +1,19 @@
+[package]
+name = "i2squeue"
+version = "0.1.0"
+authors = ["Richard A. Healy <rahealy@users.noreply.github.com>"]
+edition = "2018"
+
+[dependencies]
+cortex-a = "2.3.1"
+
+
+[dependencies.peripherals]
+path = "../hardware/peripherals"
+
+[dependencies.common]
+path = "../common"
+
+[dependencies.rack]
+path = "../rack"
+
