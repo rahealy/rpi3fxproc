@@ -32,16 +32,16 @@ use cortex_a;
 use core::panic::PanicInfo;
 use hats::ultra2::Ultra2;
 use hats::ultra2;
+use i2squeue as queue;
 use peripherals::debug;
 use peripherals::i2c::*;
 use peripherals::i2s::*;
 use peripherals::timer::{Timer1};
 use peripherals::uart::Uart0;
 use peripherals::MMIO_BASE;
-use rack::effects::SAMPLE_RATE_USIZE;
+use rack::effect::SAMPLE_RATE_USIZE;
+use rack::unit::{Unit, EffectIdx};
 use linked_list_allocator::LockedHeap;
-
-mod queue;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -54,6 +54,7 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 #[allow(unused_imports)]
 use startup;
 use startup::STACK_START;
+
 
 ///
 ///Heap variables.
@@ -76,6 +77,12 @@ fn panic(info: &PanicInfo) -> ! {
 //FIXME: Not sure if this works.
         debug::out(s);
         debug::out("\r\n");
+    }
+
+    if let Some(l) = info.location() {
+        debug::out(l.file());
+        debug::out(" line: ");
+        debug::u32hex(l.line());
     }
 
     debug::out("\r\nHalted.\r\n");
@@ -147,8 +154,8 @@ fn init_ultra2() {
         panic!();
     }
 
-//     debug::out("rpi3fxproc::init_ultra2(): RPi i2s status:\r\n");
-//     i2s.print_status();
+    debug::out("rpi3fxproc::init_ultra2(): RPi i2s status:\r\n");
+    i2s.print_status();
 
     debug::out("rpi3fxproc::init_ultra2(): Initialized.\r\n");
 }
@@ -168,71 +175,88 @@ fn print_splash() {
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
-    use rack::unit::connection::factory::{From, To, Connect};
-    use rack::unit::{Unit, EffectIdx};
-    use common::buffer::{Size, Amount};
- 
+    use rack::effects::prelude::*;
+    use common::buffer::{Read, Write};
+    use common::buffer::Amount;
+
     Uart0::init();
     I2C1::init();
     I2S0::init();
 
+    init_heap();
     print_splash();
 
-    init_heap();
-    init_ultra2();
-
-    sound_test();
-
-//    let mut rx = queue::RxTest::default();
-    let mut rx  = queue::Rx::default();
-    let mut tx  = queue::Tx::default();
+//Set up rack unit.
     let mut u0  = Unit::new();
 
-    debug::out("rpi3fxproc::main(): Connecting effects.\r\n");
+    debug::out("rpi3fxproc::main(): Initialize rack unit.\r\n");
 
-    let connections = [
-        (EffectIdx::InputA, EffectIdx::DelayA,  100), //From Input A to delay0.
-        (EffectIdx::DelayA, EffectIdx::OutputA, 100), //From delay0 to Output A
-        (EffectIdx::InputB, EffectIdx::DelayB,  100), //From Input B to delay1.
-        (EffectIdx::DelayB, EffectIdx::OutputB, 100), //From delay1 to Output B
+    let _queue_thru = [
+        EffectIdx::InputA, EffectIdx::InputB 
     ];
 
-    for (from, to, param) in connections.iter() {
-        if let Err(err) = u0.from(*from)
-                            .to(*to, *param)
-                            .connect()
-        {
-            debug::out(err);
-            debug::out("\r\n");
-        }
-    }
-
-    debug::out("rpi3fxproc::main(): Queueing effect processing order.\r\n");
-
-    let queue = [
-        EffectIdx::InputA, 
-        EffectIdx::InputB, 
-        EffectIdx::DelayA, 
-        EffectIdx::DelayB,
+    let _queue_delay = [ 
+        EffectIdx::InputA, EffectIdx::InputB, 
+        EffectIdx::DelayA, EffectIdx::DelayB 
     ];
 
-    for effect in queue.iter() {
-        if let Err(err) = u0.queue(*effect) {
-            debug::out(err);
-            debug::out("\r\n");
-        }
+    let _queue_all = [
+        EffectIdx::InputA, EffectIdx::InputB, 
+        EffectIdx::ToneA,  EffectIdx::ToneB,
+        EffectIdx::DelayA, EffectIdx::DelayB, 
+    ];
+
+    for e_idx in _queue_all.iter() {
+        u0.queue.push(*e_idx as usize);
     }
 
-    debug::out("rpi3fxproc::main(): Begin processing.\r\n");
+    let _conns_thru = [
+        (EffectIdx::InputA, EffectIdx::OutputA, thru::INPUT),
+        (EffectIdx::InputB, EffectIdx::OutputB, thru::INPUT) 
+    ];
 
+    let _conns_delay = [
+        (EffectIdx::InputA, EffectIdx::DelayA,  delay::INPUT),
+        (EffectIdx::InputB, EffectIdx::DelayB,  delay::INPUT),
+        (EffectIdx::DelayA, EffectIdx::OutputA, thru::INPUT),
+        (EffectIdx::DelayB, EffectIdx::OutputB, thru::INPUT) 
+    ];
+
+    let _conns_all = [
+        (EffectIdx::InputA, EffectIdx::ToneA,   tone::INPUT),
+        (EffectIdx::InputB, EffectIdx::ToneB,   tone::INPUT),
+        (EffectIdx::ToneA,  EffectIdx::DelayA,  delay::INPUT),
+        (EffectIdx::ToneB,  EffectIdx::DelayB,  delay::INPUT),
+        (EffectIdx::DelayA, EffectIdx::OutputA, thru::INPUT),
+        (EffectIdx::DelayB, EffectIdx::OutputB, thru::INPUT), 
+    ];
+
+    for (from_idx, to_idx, to_param) in _conns_all.iter() {
+        let outputs = &mut u0.outputs[*from_idx as usize];
+        outputs.clear();
+        outputs.push(&u0.inputs[*to_idx as usize][*to_param]);
+    }
+
+//Set up audio hardware.
+    let mut rx  = queue::Rx::default();
+    let mut tx  = queue::Tx::default();
+
+    init_ultra2();
+    sound_test();
+
+    debug::out("rpi3fxproc::main(): Begin processing.\n");
     loop { 
 //Poll i2s and queue samples. Process and queue results. Transmit.
-        let mut i = 0;
+        let mut i: usize = 0;
+        let j:usize = SAMPLE_RATE_USIZE * 2;
 
-        while i < SAMPLE_RATE_USIZE * 2 {
+        while i < j {
+            debug::out("HERE0!\n");
             rx.poll();
-            if rx.queue.amt() > (rx.queue.size() / 2) {
-                i += u0.process(&mut rx.queue, &mut tx.queue);
+            debug::out("HERE1!\n");
+            if rx.ready() {
+                u0.process(&mut rx.queue, &mut tx.queue);
+                i += rack::unit::PROCESS_BLOCK_LEN;
             }
             tx.poll();
         }

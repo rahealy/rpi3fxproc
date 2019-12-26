@@ -1,6 +1,7 @@
 **/target
 **/*.rs.bk
 **/*.img
+**/*.lst
 **/kernel*
 **/Cargo.lock
 **/math
