@@ -23,26 +23,11 @@ SOFTWARE.
 */
 #![no_std]
 
-pub type SampleType = f64;
-pub const SAMPLE_RATE: SampleType = 48000.0;
-pub const SAMPLE_RATE_USIZE: usize = SAMPLE_RATE as usize;
-
 pub mod thru;
 pub mod delay;
-pub mod pwm;
-pub mod sine;
-pub mod constant;
-pub mod tone_lmh;
+// pub mod pwm;
+// pub mod sine;
+// pub mod constant;
+pub mod tone;
 pub mod prelude;
-
-///
-///Common trait implemented by all effects.
-///
-pub trait Effect {
-    fn process(&mut self, smpl_in: SampleType) -> SampleType { smpl_in }
-    fn reset(&mut self) {}
-    fn num_params(&self) -> usize { 0 }
-    fn set_param(&mut self, _idx: usize, _val: SampleType) {}
-    fn get_param(&mut self, _idx: usize) -> SampleType { SampleType::default() }  
-}
 

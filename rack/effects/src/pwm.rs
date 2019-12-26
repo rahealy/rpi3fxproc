@@ -22,8 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use super::{SAMPLE_RATE_USIZE, SAMPLE_RATE, SampleType};
-use crate::Effect;
+use super::{Effect, SAMPLE_RATE_USIZE, SAMPLE_RATE, SampleType};
+use common::prelude::*;
 
 ///
 /// Return fractional part of sample.
@@ -46,19 +46,24 @@ pub struct Pwm {
 }
 
 impl Effect for Pwm {
-    fn process(&mut self, _smpl_in: SampleType) -> SampleType {
-        self.cnt += 1;
-        if self.cnt > SAMPLE_RATE_USIZE {
-            self.cnt = 1;
-        }
-        
-        if fract((self.cnt as SampleType) / (SAMPLE_RATE / self.freq)) > self.duty {
-            (-1.0 * self.scale + self.offset)
-        } else {
-            (1.0 * self.scale + self.offset)
+    fn process(&mut self,
+               inputs: &[Buffer<SampleType>],
+               outputs: &mut [Buffer<SampleType>])
+    {
+        for i in outputs[0].iter_idx() { 
+            self.cnt += 1;
+            if self.cnt > SAMPLE_RATE_USIZE {
+                self.cnt = 1;
+            }
+
+            if fract((self.cnt as SampleType) / (SAMPLE_RATE / self.freq)) > self.duty {
+                outputs[0].set(-1.0 * self.scale + self.offset, i);
+            } else {
+                outputs[0].set(1.0 * self.scale + self.offset, i);
+            }
         }
     }
-    
+
     fn reset(&mut self) {
         self.cnt    = 1;
         self.freq   = 440.0;

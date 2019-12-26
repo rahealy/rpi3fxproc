@@ -22,10 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use super::{SAMPLE_RATE, SAMPLE_RATE_USIZE, SampleType};
-use common::offset::{Offset};
-use crate::Effect;
+use common::prelude::*;
+use effect::*;
 // use peripherals::debug;
+
+pub const INPUT: usize = 0;
 
 const DELAY_SECONDS: usize = 2;
 const DELAY_MAX:     usize = (SAMPLE_RATE_USIZE * DELAY_SECONDS);
@@ -36,7 +37,7 @@ const DELAY_BUF_SZ:  usize = DELAY_MAX * 2;
  * Delay
  **********************************************************************/
 
-pub struct Delay {
+pub struct Processor {
     pub delay:    usize,      //Delay in samples.
     pub feedback: SampleType, //Feedback.
     pub wet:      SampleType, //Wet (delayed) signal.
@@ -47,9 +48,9 @@ pub struct Delay {
     buf: [SampleType; DELAY_BUF_SZ], //Delay buffer.
 }
 
-impl Default for Delay {
+impl Default for Processor {
     fn default() -> Self {
-        Delay {
+        Processor {
             delay: DELAY_MAX,
             feedback: 0.25,
             wet: 1.0,
@@ -62,28 +63,29 @@ impl Default for Delay {
     }
 }
 
-impl Effect for Delay {
+impl Effect for Processor {
 ///
 ///Process.
 ///
-    fn process(&mut self, smpl_in: SampleType) -> SampleType {
-        let smpl_rd  = self.buf[self.rd.0];
-        let smpl_wr  = self.buf[self.wr.0];
-        let smpl_out = (smpl_in * self.dry) + (smpl_rd * self.wet);
+   fn process(&mut self, inputs: &Inputs, outputs: &mut Outputs) {
+        if outputs.len() == 0 { return; }
 
-        self.buf[self.wr.0] = smpl_in + (smpl_wr * self.feedback);
+        let i = inputs[0].borrow();  //One input.
+        let o = &mut outputs[0]; //One output.
 
-        self.wr.inc(DELAY_BUF_SZ);
-        self.rd.inc(DELAY_BUF_SZ);
+        for i_idx in i.iter_idx() {
+            let smpl_in  = i.buf.get(i_idx);
+            let smpl_rd  = self.buf[self.rd.0];
+            let smpl_wr  = self.buf[self.wr.0];
+            let smpl_out = (smpl_in * self.dry) + (smpl_rd * self.wet);
 
-//         debug::out("smpl_in = ");
-//         debug::u32hex(smpl_in as u32);
-//         debug::out("\r\n");
-//         debug::out("smpl_out = ");
-//         debug::u32hex(smpl_out as u32);
-//         debug::out("\r\n");
+            self.buf[self.wr.val()] = smpl_in + (smpl_wr * self.feedback);
 
-        return smpl_out;
+            self.wr.inc(DELAY_BUF_SZ);
+            self.rd.inc(DELAY_BUF_SZ);
+
+            o.enqueue(smpl_out);
+        }
     }
 
 ///
@@ -123,7 +125,7 @@ impl Effect for Delay {
     }
 }
 
-impl Delay {
+impl Processor {
 ///
 ///Write position is always "delay" samples ahead of read.
 ///

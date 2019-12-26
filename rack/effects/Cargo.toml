@@ -10,6 +10,10 @@ biquad = "0.3.0"
 [dependencies.common]
 path="../../common"
 
+
+[dependencies.effect]
+path="../effect"
+
 [dependencies.num-traits]
 version = "0.2"
 default-features = false

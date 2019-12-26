@@ -24,6 +24,7 @@ SOFTWARE.
 
 use super::SampleType;
 use crate::Effect;
+use common::prelude::*;
 
 /***********************************************************************
  * Constant
@@ -38,8 +39,13 @@ impl Effect for Constant {
 ///
 ///Process.
 ///
-    fn process(&mut self, _smpl_in: SampleType) -> SampleType {
-        self.val
+    fn process(&mut self,
+               inputs: &[Buffer<SampleType>],
+               outputs: &mut [Buffer<SampleType>])
+    {
+        while !outputs[0].full_queue() {
+            outputs[0].enqueue(self.val);
+        }
     }
 
 ///

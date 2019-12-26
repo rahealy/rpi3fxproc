@@ -22,12 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use crate::Effect;
+use effect::Effect;
 
 /***********************************************************************
  * Thru
  **********************************************************************/
 
+pub const INPUT: usize = 0;
+
 #[derive(Default)]
-pub struct Thru;
-impl Effect for Thru {}
+pub struct Processor;
+impl Effect for Processor {}

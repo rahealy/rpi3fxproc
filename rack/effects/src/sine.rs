@@ -23,8 +23,8 @@ SOFTWARE.
 */
 #![allow(dead_code)]
 
-use super::{SAMPLE_RATE_USIZE, SAMPLE_RATE, SampleType};
-use crate::Effect;
+use super::{Effect, SAMPLE_RATE_USIZE, SAMPLE_RATE, SampleType};
+use common::prelude::*;
 
 const PI:                 SampleType = 3.14159265358979;
 const QUARTER_TAU:        SampleType = PI / 2.0;
@@ -84,18 +84,23 @@ pub struct Sine {
 use num_traits::Float;
 impl Effect for Sine {
 
-    fn process(&mut self, _smpl_in: SampleType) -> SampleType {
-        self.cnt += 1;
-        if self.cnt == SAMPLE_RATE_USIZE {
-            self.cnt = 0;
-        }
+    fn process(&mut self,
+               inputs: &[Buffer<SampleType>],
+               outputs: &mut [Buffer<SampleType>])
+    {
+        for i in outputs[0].iter_idx() {
+            self.cnt += 1;
+            if self.cnt == SAMPLE_RATE_USIZE {
+                self.cnt = 0;
+            }
 
-        SampleType::sin( 
-            TAU * fract((self.cnt as SampleType) / (SAMPLE_RATE / self.freq))
-        ) * self.scale + self.offset
-//         taylor (
-//             TAU * fract((self.cnt as SampleType) / (SAMPLE_RATE / self.freq))
-//         ) * self.scale + self.offset
+            outputs[0].set ( 
+                SampleType::sin ( 
+                    TAU * fract((self.cnt as SampleType) / (SAMPLE_RATE / self.freq))
+                ) * self.scale + self.offset,
+                i
+            );
+        }
     }
 
     fn reset(&mut self) {
