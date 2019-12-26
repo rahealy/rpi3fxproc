@@ -14,5 +14,6 @@
 #
 
 clean:
+	$(MAKE) -C ./effect clean 
 	$(MAKE) -C ./effects clean 
 	cargo clean

@@ -1,8 +1,8 @@
 #![no_std]
 
-pub use effects;
-
 pub mod unit;
+pub use effect;
+pub use effects;
 
 #[cfg(test)]
 mod tests {
