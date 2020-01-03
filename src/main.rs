@@ -32,7 +32,7 @@ use cortex_a;
 use core::panic::PanicInfo;
 use hats::ultra2::Ultra2;
 use hats::ultra2;
-use i2squeue as queue;
+use i2squeue as dbuf;
 use peripherals::debug;
 use peripherals::i2c::*;
 use peripherals::i2s::*;
@@ -55,12 +55,13 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 use startup;
 use startup::STACK_START;
 
-
 ///
-///Heap variables.
+///Heap starts at base of stack with an 8 byte buffer between the two.
+///FIXME: For now use the whole memory space. multi-core will come later.
 ///
 const HEAP_START: usize = (STACK_START + 8) as usize;
 const HEAP_SIZE:  usize = (MMIO_BASE as usize) - HEAP_START;
+
 
 ///
 /// Rust requires a panic handler. On panic go into an infinite loop.
@@ -74,7 +75,7 @@ fn panic(info: &PanicInfo) -> ! {
     debug::out("rpi3fxproc::panic(): Panic encountered: ");
 
     if let Some(s) = info.payload().downcast_ref::<&str>() {
-//FIXME: Not sure if this works.
+//FIXME: This doesn't work.
         debug::out(s);
         debug::out("\r\n");
     }
@@ -105,7 +106,6 @@ fn init_ultra2() {
 //CS4265 communicates audio data via i2s. Use RPi I2S0.
 //Various Ultra2 operations requre a delay so use RPi System Timer1
     let mut ultra2 = Ultra2::<I2C1, I2S0, Timer1>::default();
-    let i2s = I2S0::default();
 
     debug::out("rpi3fxproc::init_ultra2(): Begin Ultra2 initialization.\r\n");
 
@@ -119,14 +119,15 @@ fn init_ultra2() {
 //Set up Ultra2 hat.
     let mut u2params = ultra2::Params::default();
 
-    u2params.adc_gain_a(0).   //Unity Gain.
-             adc_gain_b(0).   //Unity Gain.
-             dac_vol_a(0xFF). //Full volume.
-             dac_vol_b(0xFF). //Full volume.
-             adc_sel(0).      //Select on-board microphones for adc input.
-             pdn_mic(false).  //Power up microphone.
-             pdn_adc(false).  //Power up ADC.
-             pdn_dac(false).  //Power up DAC
+    u2params.adc_gain_a(0).    //Unity Gain.
+             adc_gain_b(0).    //Unity Gain.
+             dac_vol_a(0xFF).  //Full volume.
+             dac_vol_b(0xFF).  //Full volume.
+             adc_sel(0).       //Select on-board microphones for adc input.
+             pdn_mic(false).   //Power up microphone.
+             pdn_adc(false).   //Power up ADC.
+             pdn_dac(false).   //Power up DAC
+             mode(Mode::Interrupt). //
              smplrt(SAMPLE_RATE_USIZE as u32); //48kHz sample rate.
 
     if let Err(err) = ultra2.load(&u2params) {
@@ -136,26 +137,18 @@ fn init_ultra2() {
         panic!();
     }
 
-//Initially fill i2s FIFO with zeroes.
-    debug::out("rpi3fxproc::init_ultra2(): Zero transmit buffer.\r\n");
-    i2s.tx_fill(0x00000000);
-
-//Turn on i2s.
-    debug::out("rpi3fxproc::init_ultra2(): Turn on RPi i2s TX and RX.\r\n");
-    i2s.tx_on(true);
-    i2s.rx_on(true);
-
-//Power up ultra2.
-    debug::out("rpi3fxproc::init_ultra2(): Power up Ultra2.\r\n");
+//     debug::out("rpi3fxproc::init_ultra2(): RPi i2s status:\r\n");
+//     i2s.print_status();
+    
+    debug::out("rpi3fxproc::power_up_ultra2(): Power up Ultra2.\r\n");
     if let Err(err) = ultra2.power_up() {
-        debug::out("rpi3fxproc::init_ultra2: Error ultra2.power_up() failed - ");
+        debug::out("rpi3fxproc::power_up_ultra2: Error ultra2.power_up() failed - ");
         debug::out(err.msg());
         debug::out("\r\n");
         panic!();
     }
 
-    debug::out("rpi3fxproc::init_ultra2(): RPi i2s status:\r\n");
-    i2s.print_status();
+    debug::out("rpi3fxproc::power_up_ultra2(): Ultra2 powered up.\r\n");
 
     debug::out("rpi3fxproc::init_ultra2(): Initialized.\r\n");
 }
@@ -170,108 +163,153 @@ fn print_splash() {
 }
 
 
+
 ///
 /// Main loop.
 ///
 #[export_name = "main"] //So startup.rs can find fn main().
 fn main() -> ! {
-    use rack::effects::prelude::*;
-    use common::buffer::{Read, Write};
-    use common::buffer::Amount;
-
+//Init subsystems.
     Uart0::init();
-    I2C1::init();
-    I2S0::init();
+//     I2C1::init();
+//     I2S0::init();
 
-    init_heap();
     print_splash();
+    init_heap();
+//    init_ultra2();
 
-//Set up rack unit.
-    let mut u0  = Unit::new();
+    let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
+    unsafe { core::ptr::read_volatile(big_addr as *mut u64) };
 
-    debug::out("rpi3fxproc::main(): Initialize rack unit.\r\n");
+//    Uart0::init();
 
-    let _queue_thru = [
-        EffectIdx::InputA, EffectIdx::InputB 
-    ];
+//     let mut dbuf_rx: i2squeue::Rx = dbuf::Rx::default();
+//     let mut dbuf_tx: i2squeue::Tx = dbuf::Tx::default();
+// 
+//     dbuf_rx.init(8);
+//     dbuf_tx.init(5);
+// 
+//     dbuf_rx.print_status();
+//     dbuf_tx.print_status();
 
-    let _queue_delay = [ 
-        EffectIdx::InputA, EffectIdx::InputB, 
-        EffectIdx::DelayA, EffectIdx::DelayB 
-    ];
+//    sound_test();
 
-    let _queue_all = [
-        EffectIdx::InputA, EffectIdx::InputB, 
-        EffectIdx::ToneA,  EffectIdx::ToneB,
-        EffectIdx::DelayA, EffectIdx::DelayB, 
-    ];
-
-    for e_idx in _queue_all.iter() {
-        u0.queue.push(*e_idx as usize);
-    }
-
-    let _conns_thru = [
-        (EffectIdx::InputA, EffectIdx::OutputA, thru::INPUT),
-        (EffectIdx::InputB, EffectIdx::OutputB, thru::INPUT) 
-    ];
-
-    let _conns_delay = [
-        (EffectIdx::InputA, EffectIdx::DelayA,  delay::INPUT),
-        (EffectIdx::InputB, EffectIdx::DelayB,  delay::INPUT),
-        (EffectIdx::DelayA, EffectIdx::OutputA, thru::INPUT),
-        (EffectIdx::DelayB, EffectIdx::OutputB, thru::INPUT) 
-    ];
-
-    let _conns_all = [
-        (EffectIdx::InputA, EffectIdx::ToneA,   tone::INPUT),
-        (EffectIdx::InputB, EffectIdx::ToneB,   tone::INPUT),
-        (EffectIdx::ToneA,  EffectIdx::DelayA,  delay::INPUT),
-        (EffectIdx::ToneB,  EffectIdx::DelayB,  delay::INPUT),
-        (EffectIdx::DelayA, EffectIdx::OutputA, thru::INPUT),
-        (EffectIdx::DelayB, EffectIdx::OutputB, thru::INPUT), 
-    ];
-
-    for (from_idx, to_idx, to_param) in _conns_all.iter() {
-        let outputs = &mut u0.outputs[*from_idx as usize];
-        outputs.clear();
-        outputs.push(&u0.inputs[*to_idx as usize][*to_param]);
-    }
-
-//Set up audio hardware.
-    let mut rx  = queue::Rx::default();
-    let mut tx  = queue::Tx::default();
-
-    init_ultra2();
-    sound_test();
-
-    debug::out("rpi3fxproc::main(): Begin processing.\n");
+//    debug::out("rpi3fxproc::main(): Begin processing.\n");
     loop { 
-//Poll i2s and queue samples. Process and queue results. Transmit.
-        let mut i: usize = 0;
-        let j:usize = SAMPLE_RATE_USIZE * 2;
-
-        while i < j {
-            debug::out("HERE0!\n");
-            rx.poll();
-            debug::out("HERE1!\n");
-            if rx.ready() {
-                u0.process(&mut rx.queue, &mut tx.queue);
-                i += rack::unit::PROCESS_BLOCK_LEN;
-            }
-            tx.poll();
-        }
-
-        debug::out("rx errcnt: ");
-        debug::u64hex(rx.errcnt as u64);
-        debug::out("\r\n");
-        rx.errcnt = 0;
-
-        debug::out("tx errcnt: ");
-        debug::u64hex(tx.errcnt as u64);
-        debug::out("\r\n");
-        tx.errcnt = 0;
+//        debug::out(".");
+        cortex_a::asm::wfe();
     }
 }
+
+// #[export_name = "main"] //So startup.rs can find fn main().
+// fn main() -> ! {
+//     use rack::effects::prelude::*;
+// //     use common::buffer::{Read, Write};
+// //     use common::buffer::Amount;
+// 
+//     Uart0::init();
+//     I2C1::init();
+//     I2S0::init();
+// 
+//     init_heap();
+//     print_splash();
+// 
+// //Set up rack unit.
+//     let mut u0  = Unit::new();
+// 
+//     debug::out("rpi3fxproc::main(): Initialize rack unit.\r\n");
+// 
+//     let _queue_thru = [
+//         EffectIdx::InputA, EffectIdx::InputB 
+//     ];
+// 
+//     let _queue_delay = [ 
+//         EffectIdx::InputA, EffectIdx::InputB, 
+//         EffectIdx::DelayA, EffectIdx::DelayB 
+//     ];
+// 
+//     let _queue_all = [
+//         EffectIdx::InputA, EffectIdx::InputB, 
+//         EffectIdx::ToneA,  EffectIdx::ToneB,
+//         EffectIdx::DelayA, EffectIdx::DelayB, 
+//     ];
+// 
+//     for e_idx in _queue_all.iter() {
+//         u0.queue.push(*e_idx as usize);
+//     }
+// 
+//     let _conns_thru = [
+//         (EffectIdx::InputA, EffectIdx::OutputA, thru::INPUT),
+//         (EffectIdx::InputB, EffectIdx::OutputB, thru::INPUT) 
+//     ];
+// 
+//     let _conns_delay = [
+//         (EffectIdx::InputA, EffectIdx::DelayA,  delay::INPUT),
+//         (EffectIdx::InputB, EffectIdx::DelayB,  delay::INPUT),
+//         (EffectIdx::DelayA, EffectIdx::OutputA, thru::INPUT),
+//         (EffectIdx::DelayB, EffectIdx::OutputB, thru::INPUT) 
+//     ];
+// 
+//     let _conns_all = [
+//         (EffectIdx::InputA, EffectIdx::ToneA,   tone::INPUT),
+//         (EffectIdx::InputB, EffectIdx::ToneB,   tone::INPUT),
+//         (EffectIdx::ToneA,  EffectIdx::DelayA,  delay::INPUT),
+//         (EffectIdx::ToneB,  EffectIdx::DelayB,  delay::INPUT),
+//         (EffectIdx::DelayA, EffectIdx::OutputA, thru::INPUT),
+//         (EffectIdx::DelayB, EffectIdx::OutputB, thru::INPUT), 
+//     ];
+// 
+//     for (from_idx, to_idx, to_param) in _conns_all.iter() {
+//         let outputs = &mut u0.outputs[*from_idx as usize];
+//         outputs.clear();
+//         outputs.push(&u0.inputs[*to_idx as usize][*to_param]);
+//     }
+//     
+//     let mut dbuf_rx: i2squeue::Rx = dbuf::Rx::default();
+//     let mut dbuf_tx: i2squeue::Tx = dbuf::Tx::default();
+// 
+//     dbuf_rx.init(8);
+//     dbuf_tx.init(5);
+// 
+// //Set up audio hardware.
+//     init_ultra2();
+//     
+// //Double buffer status.
+//     dbuf_rx.print_status();
+//     dbuf_tx.print_status();
+// 
+// 
+// //Test audio.
+// //    sound_test();
+// 
+//     debug::out("rpi3fxproc::main(): Begin processing.\n");
+//     loop { 
+// //Poll i2s and queue samples. Process and queue results. Transmit.
+// //         let mut i: usize = 0;
+// //         let j:usize = SAMPLE_RATE_USIZE * 2;
+// // 
+// //         while i < j {
+// //             debug::out("HERE0!\n");
+// //             rx.poll();
+// //             debug::out("HERE1!\n");
+// //             if rx.ready() {
+// //                 u0.process(&mut rx.queue, &mut tx.queue);
+// //                 i += rack::unit::PROCESS_BLOCK_LEN;
+// //             }
+// //             tx.poll();
+// //         }
+// // 
+// //         debug::out("rx errcnt: ");
+// //         debug::u64hex(rx.errcnt as u64);
+// //         debug::out("\r\n");
+// //         rx.errcnt = 0;
+// // 
+// //         debug::out("tx errcnt: ");
+// //         debug::u64hex(tx.errcnt as u64);
+// //         debug::out("\r\n");
+// //         tx.errcnt = 0;
+//     }
+// }
 
 
 ///
