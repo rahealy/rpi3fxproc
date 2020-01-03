@@ -14,7 +14,7 @@ type PortType = Box<dyn serialport::SerialPort>; //Easier than typing the whole 
 const NUM_RETRIES: u8 = 10; //Number of times to retry a port read/write operation.
 
 fn main() {
-    let matches = App::new("rpi3serbtldr_px")
+    let matches = App::new("rpi3serbtldr_tx")
         .about("Transmit a file via serial port to a rpi3serbtldr client.")
         .setting(AppSettings::DisableVersion)
         .arg(Arg::with_name("port")

@@ -104,9 +104,8 @@ fn main() -> ! {
     let mut state = State::POLL;
 
 //Hello world.
-    uart.puts("rpiserbtldr_rx\r\n");
-    for _ in 0..50 { uart.send('.'); }
-    uart.puts("\r\n");
+    uart.puts("rpi3fxproc bootloader_rx\r\n");
+    uart.puts("------------------------\r\n");
 
 //Let tx know we're ready.
     send_break_signal(&uart);
