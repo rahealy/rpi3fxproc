@@ -5,7 +5,7 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use common::buffer::Queue;
-use common::buffer::{Read, Write, BUFFER_LEN};
+use common::buffer::{Write, BUFFER_LEN};
 use effect::{SampleType, Effect};
 use peripherals::debug;
 
@@ -62,7 +62,6 @@ impl Unit<'_> {
                    in_q:  &mut Queue<SampleType>,
                    out_q: &mut Queue<SampleType>)
     {
-        use common::buffer::Amount;
 //Reset and enqueue input data.
         {
             let mut i_a = self.inputs[EffectIdx::InputA as usize][thru::INPUT].borrow_mut();
