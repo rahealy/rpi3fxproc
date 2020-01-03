@@ -87,10 +87,10 @@ pub unsafe fn __unsafe_main() -> ! {
 
 //Initialze startup subsystems.
     uart::Uart0::init();
-    exceptions::init();
     memory::init();
 
     uart::Uart0::default().puts("startup::__unsafe_main(): Calling main().\r\n");
+    exceptions::init();
     main();
 }
 
@@ -152,7 +152,11 @@ pub unsafe extern "C" fn _boot() -> ! {
             barrier::isb(barrier::SY);
 
 //Set up architecture.
-            HCR_EL2.modify(HCR_EL2::RW::EL1IsAarch64);
+            HCR_EL2.modify (
+//                 HCR_EL2::IMO::CLEAR +
+//                 HCR_EL2::FMO::CLEAR +                
+                HCR_EL2::RW::EL1IsAarch64
+            );
  
 //Set up for transition to EL1. At this point whatever is in the SPSR_EL2 
 //register is undefined. Mask off bits so the PSTATE register isn't set

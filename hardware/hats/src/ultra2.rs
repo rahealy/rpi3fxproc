@@ -119,6 +119,7 @@ pub struct Params {
     adcgainb: i8,
     smplrt:   u32,
     adcsel:   u8,
+    mode:     i2s::Mode,
 }
 
 impl Params {
@@ -210,6 +211,14 @@ impl Params {
         new
     }
 
+///
+///Operation mode. Poll, Interrupt, DMA.
+///
+    pub fn mode(&mut self, mode: i2s::Mode) -> &mut Self {
+        let mut new = self;
+        new.mode = mode;
+        new
+    }
 }
 
 /**********************************************************************
@@ -254,7 +263,8 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
             fs_master(false).
             clk_master(false).
             chlen(32,32).
-            smplrt(params.smplrt);
+            smplrt(params.smplrt).
+            mode(params.mode);
 
         pcm.rx.ch1.enable(true).
                    width(32). //Sample width must be 32 bits for i2s.
@@ -417,7 +427,7 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 
         self.cs4265.ld_reg(RegisterAddress::POWERCTL)?;
         self.delay_1s();
-        
+
 //         //Print status of CS4265.
 //         if let Err(err) = self.cs4265.print_status() {
 //             return Err(ERROR::CS4265(err));
@@ -492,6 +502,15 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 
 //Configure the CS4265.
         self.cfg_cs4265(params)?;
+
+//Turn on I2S.
+        if !params.pdn_adc {
+            self.i2s.rx_on(true);
+        }
+
+        if !params.pdn_dac {
+            self.i2s.tx_on(true);
+        }
 
         debug::out("ultra2.cfg(): Ultra2 configured.\r\n");
         return Ok(());

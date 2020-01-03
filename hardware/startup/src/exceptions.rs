@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-use cortex_a::{barrier, regs::*};
+use cortex_a::{asm, barrier, regs::*};
 use crate::uart::Uart0;
 
 global_asm!(include_str!("vectors.S"));
@@ -31,11 +31,12 @@ global_asm!(include_str!("vectors.S"));
 /// The default exception, invoked for every exception type unless the handler
 /// is overwritten.
 #[no_mangle]
-unsafe extern "C" fn default_exception_handler() {
-    Uart0::default().puts("Unexpected exception.\r\n");
-    loop {
-        cortex_a::asm::wfe()
-    }
+unsafe extern "C" fn default_exception_handler(e: &mut ExceptionContext) {
+    e.elr_el1 += 4;
+//    Uart0::default().puts("Unexpected exception.\r\n");
+//     loop {
+//         cortex_a::asm::wfe()
+//     }
 }
 
 
@@ -105,13 +106,25 @@ unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
     uart.puts("exceptions::current_el0_synchronous(): Returning.\r\n");
 }
 
-#[no_mangle]
-unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
-    let uart = Uart0::default();
-    uart.puts("exceptions::current_elx_synchronous(): Caught exception.\r\n");
-    e.elr_el1 += 4; //Return to first instruction after exception.
-    uart.puts("exceptions::current_elx_synchronous(): Returning.\r\n");
-}
+// #[no_mangle]
+// unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
+//     let uart = Uart0::default();
+// 
+//     const EL2: u32 = CurrentEL::EL::EL2.value;
+//     const EL1: u32 = CurrentEL::EL::EL1.value;
+//     
+//     let el = CurrentEL.get();
+//     if EL2 == el {
+// //        uart.puts("exceptions::current_elx_synchronous(): In EL2.\r\n");
+//     } else if EL1 == el {
+// //        uart.puts("exceptions::current_elx_synchronous(): In EL1.\r\n");
+//     }
+// 
+// //    uart.puts("exceptions::current_elx_synchronous(): Caught exception.\r\n");
+//     e.elr_el1 += 4; //Return to first instruction after exception.
+// 
+//   uart.puts("exceptions::current_elx_synchronous(): Returning.\r\n");
+// }
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
@@ -119,6 +132,7 @@ unsafe extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
     uart.puts("exceptions::current_elx_serror(): Caught exception.\r\n");
     e.elr_el1 += 4; //Return to first instruction after exception.
     uart.puts("exceptions::current_elx_serror(): Returning.\r\n");
+    
 }
 
 #[no_mangle]
@@ -127,10 +141,27 @@ unsafe extern "C" fn lower_aarch64_synchronous(e: &mut ExceptionContext) {
     uart.puts("exceptions::lower_aarch64_synchronous(): Caught exception.\r\n");
     e.elr_el1 += 4; //Return to first instruction after exception.
     uart.puts("exceptions::lower_aarch64_synchronous(): Returning.\r\n");
+    
 }
 
-// unsafe extern "C" fn lower_aarch64_irq(e: &mut ExceptionContext);
-// unsafe extern "C" fn lower_aarch64_serror(e: &mut ExceptionContext);
+#[no_mangle]
+unsafe extern "C" fn lower_aarch64_irq(e: &mut ExceptionContext) {
+    let uart = Uart0::default();
+    uart.puts("exceptions::lower_aarch64_irq(): Caught exception.\r\n");
+    e.elr_el1 += 4; //Return to first instruction after exception.
+    uart.puts("exceptions::lower_aarch64_irq(): Returning.\r\n");
+    
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_aarch64_serror(e: &mut ExceptionContext) {
+    let uart = Uart0::default();
+    uart.puts("exceptions::lower_aarch64_serror(): Caught exception.\r\n");
+    e.elr_el1 += 4; //Return to first instruction after exception.
+    uart.puts("exceptions::lower_aarch64_serror(): Returning.\r\n");
+    
+}
+
 
 #[no_mangle]
 unsafe extern "C" fn lower_aarch32_synchronous(e: &mut ExceptionContext) {
@@ -138,4 +169,5 @@ unsafe extern "C" fn lower_aarch32_synchronous(e: &mut ExceptionContext) {
     uart.puts("exceptions::lower_aarch32_synchronous(): Caught exception.\r\n");
     e.elr_el1 += 4; //Return to first instruction after exception.
     uart.puts("exceptions::lower_aarch32_synchronous(): Returning.\r\n");
+    
 }

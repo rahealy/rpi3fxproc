@@ -36,6 +36,7 @@ pub mod gpclr;
 pub mod gpset;
 pub mod i2c;
 pub mod i2s;
+pub mod irq;
 pub mod mbox;
 pub mod pwm;
 pub mod timer;

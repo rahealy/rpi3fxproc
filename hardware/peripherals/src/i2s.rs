@@ -30,6 +30,7 @@ use crate::debug;
 use crate::timer::{Timer, Timer1};
 use crate::gpfsel::GPFSEL;
 use crate::clk::PCMCTL;
+use crate::irq::*;
 
 
 /**********************************************************************
@@ -59,6 +60,8 @@ impl ERROR {
  * I2S
  *********************************************************************/
 
+pub const FIFO_LEN: usize = 64;
+
 pub trait I2S {
     fn init() {
         debug::out("i2s.init(): Initializing I2S.\r\n");
@@ -76,12 +79,25 @@ pub trait I2S {
  * Params
  *********************************************************************/
 
+#[derive(Copy, Clone)] 
+pub enum Mode {
+    Poll,
+    Interrupt,
+    DMA
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Mode::Poll
+    }
+}
+
 #[derive(Default)]
 pub struct Channel {
-    en:  bool, //Channel enable.
-    wid: u32,  //Bit depth.
-    wex: u32,  //Bit extend for >24 bit samples.
-    pos: u32,  //Position in frame.
+    en:   bool, //Channel enable.
+    wid:  u32,  //Bit depth.
+    wex:  u32,  //Bit extend for >24 bit samples.
+    pos:  u32,  //Position in frame.
 }
 
 impl Channel {
@@ -142,7 +158,8 @@ pub struct Params {
     clkm:   bool, //Clock master
     flen:   u32,  //Length of frame in clocks.
     fslen:  u32,  //Length of first half of frame in clocks.
-    smplrt: u32   //Sample rate in samples per second.
+    smplrt: u32,  //Sample rate in samples per second.
+    mode:   Mode,
 }
 
 impl Params {
@@ -183,6 +200,12 @@ impl Params {
         new
     }
     
+    pub fn mode(&mut self, mode: Mode) -> &mut Self {
+        let mut new = self;
+        new.mode = mode;
+        new
+    }
+
     fn nchans(&self) -> u32 {
         let rx = self.rx.nchans();
         let tx = self.tx.nchans();
@@ -414,16 +437,40 @@ register_bitfields! {
 ///DMA Request level. Offset 0x14.
     DREQ_A [
 ///FIFO DMA Panic level.
-        TX_PANIC OFFSET(24) NUMBITS(7) [],
+        TX_PANIC OFFSET(24) NUMBITS(7) [
+            EMPTY = 0,
+            A  = 16, 
+            B  = 32, 
+            C  = 48, 
+            D  = 64
+        ],
 
 ///FIFO DMA Panic level.
-        RX_PANIC OFFSET(16) NUMBITS(7) [],
+        RX_PANIC OFFSET(16) NUMBITS(7) [
+            EMPTY = 0,
+            A  = 16, 
+            B  = 32, 
+            C  = 48, 
+            D  = 64
+        ],
 
 ///Request level. When below this level PCM will request more data.
-        TX OFFSET(8) NUMBITS(7) [],
+        TXREQ OFFSET(8) NUMBITS(7) [
+            EMPTY = 0,
+            A  = 16, 
+            B  = 32, 
+            C  = 48, 
+            D  = 64
+        ],
 
 ///Request level. When below this level PCM will request more data.
-        RX OFFSET(0) NUMBITS(7) []
+        RXREQ OFFSET(0) NUMBITS(7) [
+            EMPTY = 0,
+            A  = 16, 
+            B  = 32, 
+            C  = 48, 
+            D  = 64
+        ]
     ],
 
 ///Interupt enable. Offset 0x18.
@@ -483,7 +530,7 @@ register_bitfields! {
 ///PCM registers control the I2S peripheral. 0x7E203000.
 ///
 const PCM_OFFSET:  u32 = 0x0020_3000;
-const PCM_BASE:    u32 = MMIO_BASE + PCM_OFFSET; 
+pub const PCM_BASE:    u32 = MMIO_BASE + PCM_OFFSET; 
 
 
 ///
@@ -623,23 +670,63 @@ impl I2S for PCM {
 
 //Set thresholds.
         debug::out("pcm.load(): Set FIFO thresholds.\r\n");
-        self.CS_A.modify (
-            CS_A::RXSEX::SET + //Extend sign bit to fill whole width.
-            CS_A::RXTHR::C   + //RXR set when FIFO is less than full.
-            CS_A::TXTHR::D     //TXW set when FIFO is one sample shy of full.
-        );
-        PCM::wait_1sec();
 
-//Set Interrupt status.
-        self.INTEN_A.modify (
-            INTEN_A::RXR::CLEAR +
-            INTEN_A::TXW::CLEAR
-        );
+        match params.mode {
+            Mode::Poll => {
+                debug::out("pcm.load(): Poll mode selected.\r\n");
+
+                self.CS_A.modify (
+                    CS_A::RXTHR::C   + //RXR set when RX FIFO is 3/4 full.
+                    CS_A::TXTHR::A   + //TXW set when TX FIFO is 1/4 full.
+                    CS_A::RXSEX::SET   //Extend sign bit to fill whole width.
+                );
+            },
+
+            Mode::Interrupt => {
+                debug::out("pcm.load(): Interrupt mode selected.\r\n");
+
+                let irq = IRQ::default();
+
+                self.INTEN_A.modify (
+                    INTEN_A::RXR::SET +
+                    INTEN_A::TXW::SET
+                );
+
+                self.CS_A.modify (
+                    CS_A::RXTHR::C   + //RXR set when RX FIFO is 3/4 full.
+                    CS_A::TXTHR::A   + //TXW set when TX FIFO is 1/4 full.
+                    CS_A::RXSEX::SET   //Extend sign bit to fill whole width.
+                );
+                
+                irq.ENABLE_2.modify(ENABLE_2::PCM::SET);
+            },
+
+            Mode::DMA => {
+                debug::out("pcm.load(): DMA mode selected.\r\n");
+
+//Set DMA Parameters. CS_A::DMAEN must be set and DMA must be configured.
+                self.CS_A.modify (
+                    CS_A::DMAEN::SET //Enable DMA.
+                );
+
+                self.DREQ_A.modify (
+                    DREQ_A::TX_PANIC::EMPTY + //Panic when nothing to transmit.
+                    DREQ_A::RX_PANIC::D     + //Panic when full.
+                    DREQ_A::RXREQ::C        + //Request read when 3/4 full.
+                    DREQ_A::TXREQ::A          //Request write when 1/4 full.
+                );
+            }
+        }
+
+        PCM::wait_1sec();
 
 //Exit standby.
         debug::out("pcm.load(): Exit RAM standby.\r\n");
         self.CS_A.modify(CS_A::STBY::SET);
         PCM::wait_1sec();
+
+//Fill tx with zeroes.
+        self.tx_fill(0);
 
         debug::out("pcm.load(): Configuration parameters loaded.\r\n");
     }
@@ -657,10 +744,10 @@ impl I2S for PCM {
 
     fn rx_on(&self, val: bool) {
         if val {
-            debug::out("pcm.enable_rx(): Enabling PCM receive (RX).\r\n");
+            debug::out("pcm.rx_on(): Enabling PCM receive (RX).\r\n");
             self.CS_A.modify (CS_A::RXON::SET);
         } else {
-            debug::out("pcm.enable_rx(): Disabling PCM receive (RX).\r\n");
+            debug::out("pcm.rx_on(): Disabling PCM receive (RX).\r\n");
             self.CS_A.modify (CS_A::RXON::CLEAR);
         }
     }
