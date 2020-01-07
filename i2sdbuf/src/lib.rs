@@ -99,12 +99,11 @@ impl DoubleBuffer {
         if chan < 15 {
 //FIXME: Is memory barrier necessary?
 //        unsafe { cortex_a::barrier::dmb(cortex_a::barrier::SY); }
+            self.chan = chan;
 
             self.dma.ENABLE.set ( 
                 self.dma.ENABLE.get() | (1 << self.chan)
             );
-
-            self.chan = chan;
 
             self.dma.CHANNELS[self.chan].CS.modify ( CS::RESET::SET );
 
