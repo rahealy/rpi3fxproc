@@ -131,7 +131,7 @@ fn init_ultra2() {
 
 //     debug::out("rpi3fxproc::init_ultra2(): RPi i2s status:\r\n");
 //     i2s.print_status();
-    
+
     debug::out("rpi3fxproc::power_up_ultra2(): Power up Ultra2.\r\n");
     if let Err(err) = ultra2.power_up() {
         debug::out("rpi3fxproc::power_up_ultra2: Error ultra2.power_up() failed - ");
@@ -165,16 +165,21 @@ fn main() -> ! {
     Uart0::init();
     I2C1::init();
     I2S0::init();
-//    init_heap();
+//    init_heap(); //FIXME: This throws exceptions. 
+                   //FIXME: Refactor to use stack only structures in the future.
 
-//    let mut dbuf_rx = i2sdbuf::Tx::default();
+    let i2s = I2S0::default();
+//    let mut dbuf_rx = i2sdbuf::Rx::default();
     let mut dbuf_tx = i2sdbuf::Tx::default();
 
-    print_splash();
-    init_ultra2();
+    print_splash();      //Hello world.
+    init_ultra2();       //Intializes ultra2 and i2s subsystem.
 
-//    dbuf_rx.activate(8);
-    dbuf_tx.activate(5);
+//    dbuf_rx.activate(8); //Activate Rx on DMA channel 8.
+    dbuf_tx.activate(5); //Activate Tx on DMA channel 5.
+
+//    i2s.rx_on(true);     //Turn on I2S.
+    i2s.tx_on(true);     //Turn on I2S.
 
 //    dbuf_rx.print_status();
     dbuf_tx.print_status();

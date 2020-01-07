@@ -503,15 +503,6 @@ impl  <II2C, II2S, ITIMER> Ultra2<II2C, II2S, ITIMER> where
 //Configure the CS4265.
         self.cfg_cs4265(params)?;
 
-//Turn on I2S.
-        if !params.pdn_adc {
-            self.i2s.rx_on(true);
-        }
-
-        if !params.pdn_dac {
-            self.i2s.tx_on(true);
-        }
-
         debug::out("ultra2.cfg(): Ultra2 configured.\r\n");
         return Ok(());
     }

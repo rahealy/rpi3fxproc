@@ -86,47 +86,44 @@ impl DoubleBuffer {
     ///
     ///Set DMA channel this buffer will use.
     ///
-    fn init(&mut self, chan: usize) {
-        //Sanity check for required DMA control block alignment.
-        if self.blkloc(0) % 32 != 0 { panic!(); }
-        if self.blkloc(1) % 32 != 0 { panic!(); }
+    fn init(&mut self) {
+        self.blks[0].NEXTCONBK.set(dma::phy_mem_to_vc_loc(self.blkloc(1)));
+        self.blks[1].NEXTCONBK.set(dma::phy_mem_to_vc_loc(self.blkloc(0)));
+        self.blks[0].TXFR_LEN.set(BUFFER_LEN as u32);
+        self.blks[1].TXFR_LEN.set(BUFFER_LEN as u32);
+    }
+
+    fn activate(&mut self, chan: usize) {
+        use cortex_a::asm;
 
         if chan < 15 {
+//FIXME: Is memory barrier necessary?
+//        unsafe { cortex_a::barrier::dmb(cortex_a::barrier::SY); }
+
+            self.dma.ENABLE.set ( 
+                self.dma.ENABLE.get() | (1 << self.chan)
+            );
+
             self.chan = chan;
-            self.blks[0].NEXTCONBK.set(dma::phy_mem_to_vc_loc(self.blkloc(1)));
-            self.blks[1].NEXTCONBK.set(dma::phy_mem_to_vc_loc(self.blkloc(0)));
-            self.blks[0].TXFR_LEN.set(BUFFER_LEN as u32);
-            self.blks[1].TXFR_LEN.set(BUFFER_LEN as u32);
+
+            self.dma.CHANNELS[self.chan].CS.modify ( CS::RESET::SET );
+
+            self.dma.CHANNELS[self.chan].CONBLK_AD.write ( 
+                CONBLK_AD::SCB_ADDR.val (dma::phy_mem_to_vc_loc(self.blkloc(0)))
+            );
+
+            self.dma.CHANNELS[self.chan].CS.modify(
+                CS::WAIT_FOR_OUTSTANDING_WRITES::SET + //Finish transfer before moving to next.
+                CS::PANIC_PRIORITY.val(15)           + //? Because Circle does this.
+                CS::PRIORITY.val(1)                  + //? Because Circle does this too.
+                CS::ACTIVE::SET                        //Away we go!
+            );
+
+//FIXME: Is memory barrier necessary?
+//        unsafe { cortex_a::barrier::dmb(cortex_a::barrier::SY); }
         } else {
             panic!("Specified channel out of range.");
         }
-    }
-
-    fn activate(&mut self) {
-        use cortex_a::asm;
-
-//FIXME: Is memory barrier necessary?
-//        unsafe { cortex_a::barrier::dmb(cortex_a::barrier::SY); }
-
-        self.dma.ENABLE.set ( 
-            self.dma.ENABLE.get() | (1 << self.chan)
-        );
-
-        self.dma.CHANNELS[self.chan].CS.modify ( CS::RESET::SET );
-
-        self.dma.CHANNELS[self.chan].CONBLK_AD.write ( 
-            CONBLK_AD::SCB_ADDR.val (dma::phy_mem_to_vc_loc(self.blkloc(0)))
-        );
-
-        self.dma.CHANNELS[self.chan].CS.modify(
-            CS::WAIT_FOR_OUTSTANDING_WRITES::SET + //Finish transfer before moving to next.
-            CS::PANIC_PRIORITY.val(15)           + //? Because Circle does this.
-            CS::PRIORITY.val(1)                  + //? Because Circle does this too.
-            CS::ACTIVE::SET                        //Away we go!
-        );
-
-//FIXME: Is memory barrier necessary?
-//        unsafe { cortex_a::barrier::dmb(cortex_a::barrier::SY); }
     }
 
     pub fn print_debug(&self) {
@@ -174,7 +171,7 @@ impl Rx {
 ///PCM_RX
 ///
     pub fn activate(&mut self, chan: usize) {
-        self.0.init(chan);
+        self.0.init();
 
         for i in 0..2 {
             self.0.blks[i].TI.write (
@@ -194,7 +191,7 @@ impl Rx {
             );
         }
 
-        self.0.activate();
+        self.0.activate(chan);
     }
 
     pub fn print_status(&self) {
@@ -228,7 +225,7 @@ impl Tx {
 ///TXFR_LEN 2024
 ///
     pub fn activate(&mut self, chan: usize) {
-        self.0.init(chan);
+        self.0.init();
 
         for i in 0..2 {
             self.0.blks[i].TI.write (
@@ -248,10 +245,10 @@ impl Tx {
             );
         }
         
-        self.0.activate();
+        self.0.activate(chan);
     }
 
-    pub fn print_status(&self) { 
+    pub fn print_status(&self) {
         debug::out("\nTx Status:\n");
         self.0.print_debug(); 
     }
