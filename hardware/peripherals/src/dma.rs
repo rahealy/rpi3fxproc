@@ -42,7 +42,7 @@ const ENABLE_BASE:     u32 = DMA0_BASE + 0xFF0;
 ///
 #[inline]
 pub fn phy_mem_to_vc_loc(loc: u32) -> u32 {
-    (loc & 0x00FF_FFFF) + 0xC0000000 //Direct uncached.
+   (loc & 0x00FF_FFFF) + 0xC0000000 //Direct uncached.
 //    (loc & 0x00FF_FFFF) + 0x80000000 //L2 Cache only. 
 //    (loc & 0x00FF_FFFF) + 0x40000000 //L2 Cache coherent non allocating.
 }
@@ -333,6 +333,16 @@ impl ops::Deref for ControlBlockInstance {
         unsafe {
             mem::transmute::<&ControlBlockInstance, &ControlBlock>(self)
         }
+    }
+}
+
+impl ControlBlockInstance {
+    pub fn testpat() -> ControlBlockInstance {
+        let mut cbi = ControlBlockInstance::default();
+        for i in 0..mem::size_of::<ControlBlock>() {
+            cbi.data[i] = 0x0F;
+        }
+        cbi
     }
 }
 

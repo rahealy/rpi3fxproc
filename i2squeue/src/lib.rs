@@ -138,6 +138,15 @@ impl DoubleBuffer {
         debug::out("Block 0 (");
         debug::u32hex(self.blkloc(0));
         debug::out("): \n");
+        unsafe {
+            for i in 0..8 {
+                let blk0 = (self.blkloc(0) + (4 * i)) as *const u32;
+                debug::u32hex(*blk0);
+                debug::out(":");
+                debug::u32bits(*blk0);
+                debug::out("\n");
+            }
+        }
         self.blks[0].print_debug();
         
         debug::out("Block 1 (");
@@ -244,8 +253,13 @@ impl Tx {
                 TI::INTEN::SET       //Interrupt on completion.
             );
 
-            self.0.blks[i].SOURCE_AD.set(dma::phy_mem_to_vc_loc(self.0.bufloc(i)));
-            self.0.blks[i].DEST_AD.set(dma::mmio_to_vc_loc(i2s::PCM_FIFO));
+            self.0.blks[i].SOURCE_AD.set(
+                dma::phy_mem_to_vc_loc(self.0.bufloc(i))
+            );
+
+            self.0.blks[i].DEST_AD.set(
+                dma::mmio_to_vc_loc(i2s::PCM_FIFO)
+            );
         }
         
         debug::out("i2squeue::Tx::activate(): Configured but not activated\n");
