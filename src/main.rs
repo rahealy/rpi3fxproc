@@ -32,7 +32,7 @@ use cortex_a;
 use core::panic::PanicInfo;
 use hats::ultra2::Ultra2;
 use hats::ultra2;
-use i2squeue as dbuf;
+use i2sdbuf;
 use peripherals::debug;
 use peripherals::i2c::*;
 use peripherals::i2s::*;
@@ -167,8 +167,8 @@ fn main() -> ! {
     I2S0::init();
 //    init_heap();
 
-//    let mut dbuf_rx: i2squeue::Rx = dbuf::Rx::default();
-    let mut dbuf_tx: i2squeue::Tx = dbuf::Tx::default();
+//    let mut dbuf_rx = i2sdbuf::Tx::default();
+    let mut dbuf_tx = i2sdbuf::Tx::default();
 
     print_splash();
     init_ultra2();

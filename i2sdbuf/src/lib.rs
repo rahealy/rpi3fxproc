@@ -24,19 +24,14 @@
 #![no_std]
 
 ///
-///Helper module provides initialization and a rx/tx queue for samples
+///Helper module provides initialization and a rx/tx double buffer for samples
 ///read from and ready to send to the I2S bus.
 ///
 
-//use register::mmio::ReadWrite;
 use peripherals::i2s;
-//use peripherals::i2s::I2S;
 use peripherals::dma;
 use peripherals::dma::*;
 use peripherals::debug;
-//use rack::effect::SampleType;
-//use common::buffer::{Queue, Read, Write, Amount};
-//use common::buffer::{Queue};
 
 const BUFFER_LEN: usize = i2s::FIFO_LEN;
 
@@ -49,7 +44,7 @@ type Buffer = [i32; BUFFER_LEN];
 #[repr(C)]
 #[repr(align(32))]
 pub struct DoubleBuffer {
-    blks: [ControlBlockInstance; 2],
+    blks: [dma::ControlBlockInstance; 2],
     bufs: [Buffer; 2],
     amts: [usize; 2],
     chan: usize,
@@ -64,7 +59,7 @@ impl Default for DoubleBuffer {
     fn default() -> Self {
         DoubleBuffer {
             bufs: [[0; BUFFER_LEN]; 2],
-            blks: [ControlBlockInstance::default(); 2],
+            blks: [dma::ControlBlockInstance::default(); 2],
             amts: [0; 2],
             chan: 0,
             cur: false,
@@ -138,15 +133,6 @@ impl DoubleBuffer {
         debug::out("Block 0 (");
         debug::u32hex(self.blkloc(0));
         debug::out("): \n");
-        unsafe {
-            for i in 0..8 {
-                let blk0 = (self.blkloc(0) + (4 * i)) as *const u32;
-                debug::u32hex(*blk0);
-                debug::out(":");
-                debug::u32bits(*blk0);
-                debug::out("\n");
-            }
-        }
         self.blks[0].print_debug();
         
         debug::out("Block 1 (");
@@ -261,9 +247,6 @@ impl Tx {
                 dma::mmio_to_vc_loc(i2s::PCM_FIFO)
             );
         }
-        
-        debug::out("i2squeue::Tx::activate(): Configured but not activated\n");
-        self.print_status();
         
         self.0.activate();
     }

@@ -26,5 +26,5 @@ path = "rack"
 [dependencies.common]
 path = "common"
 
-[dependencies.i2squeue]
-path = "i2squeue"
+[dependencies.i2sdbuf]
+path = "i2sdbuf"
