@@ -33,6 +33,13 @@
 pub const STACK_START: u64 = 0x0080_0000; //Stack decrements from 8MB boundary.
 pub const MMIO_BASE: usize = 0x3F00_0000; //Peripheral access starts at 1GB boundary.
 
+///
+///Heap starts at base of stack with an 8 byte buffer between the two.
+///FIXME: For now use the whole memory space. multi-core will come later.
+///
+pub const HEAP_START: usize = STACK_START as usize; //(STACK_START + 8) as usize;
+pub const HEAP_SIZE:  usize = 0x0080_0000; //MMIO_BASE - HEAP_START;
+
 mod uart;
 mod mbox;
 mod memory;

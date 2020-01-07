@@ -32,6 +32,12 @@ use crate::gpfsel::GPFSEL;
 use crate::clk::PCMCTL;
 use crate::irq::*;
 
+///
+///PCM registers control the I2S peripheral. 0x7E203000.
+///
+const PCM_OFFSET:   u32 = 0x0020_3000;
+pub const PCM_BASE: u32 = MMIO_BASE + PCM_OFFSET; 
+pub const PCM_FIFO: u32 = PCM_BASE + 0x4; //FIFO Buffer at offset 0x4.
 
 /**********************************************************************
  * ERROR
@@ -524,13 +530,6 @@ register_bitfields! {
         EN OFFSET(0) NUMBITS(1) []
     ]
 }
-
-
-///
-///PCM registers control the I2S peripheral. 0x7E203000.
-///
-const PCM_OFFSET:  u32 = 0x0020_3000;
-pub const PCM_BASE:    u32 = MMIO_BASE + PCM_OFFSET; 
 
 
 ///

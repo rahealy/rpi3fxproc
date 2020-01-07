@@ -529,4 +529,15 @@ impl Uart0 {
             );
         }
     }
+    
+    pub fn u32bits(&self, val: u32) {
+        self.puts("0b");
+        for i in (0..32).rev() {
+            if (i < 31) && (i % 4 == 3) { self.send('_'); }
+            self.send(
+                if ((1 << i) & val) > 0 { '1' } else { '0' } 
+            );
+        }
+    }
+
 }

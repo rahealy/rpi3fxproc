@@ -24,7 +24,18 @@
 
 #![no_std]
 
-pub const MMIO_BASE: u32 = 0x3F000000; //Peripheral access is derived from this base memory offset.
+///
+///Start address of the I/O peripherals mapped to the physical memory by
+///hardware. If the MMU is set up to map this range to another base then
+///software should use the MMU mapping.
+///
+pub const MMIO_BASE: u32 = 0x3F000000;
+
+///
+///Start address of the I/O peripherals mapped to the VC CPU bus. This
+///base should be used when setting up the DMA controller.
+///
+pub const VCIO_BASE: u32 = 0x7E000000;
 
 pub mod clk;
 pub mod debug;

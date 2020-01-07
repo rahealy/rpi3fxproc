@@ -22,9 +22,17 @@
 //  SOFTWARE.
 //
 
-.macro SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE handler
-.balign 0x80
+/*
+    general-purpose registers X0-X30.
+    Advanced SIMD and Floating-point registers V0 - V31.
+    Some status registers.
+    TTBR0_EL1 and TTBR0.
+    Thread Process ID (TPIDxxx) Registers.
+    Address Space ID (ASID).
+*/
 
+.macro SAVE_CALL_RESTORE origin handler
+.org \origin
     sub    sp,  sp,  #16 * 17
 
     stp    x0,  x1,  [sp, #16 * 0]
@@ -43,54 +51,59 @@
     stp    x26, x27, [sp, #16 * 13]
     stp    x28, x29, [sp, #16 * 14]
 
-    mrs    x1,  SPSR_EL1
-    mrs    x2,  ELR_EL1
+    mrs    x1, ELR_EL1
+    mrs    x2, SPSR_EL1
+    mrs    x3, TTBR0_EL1
 
-    stp    x30, x1,  [sp, #16 * 15]
-    str    x2,       [sp, #16 * 16]
+    stp    lr,  x1,  [sp, #16 * 15]
+    stp    x2,  x3,  [sp, #16 * 16]
 
+    // x0 is the first argument for the function called through `\handler`.
     mov    x0,  sp
+
+    // Call `\handler`.
     bl     \handler
     b      __restore_context
 .endm
 
-.macro FIQ_DUMMY
-.balign 0x80
+.macro FIQ_DUMMY origin
+.org \origin
 1:  wfe
     b      1b
 .endm
 
 // The vector definitions
 .section .vectors, "ax"
+.align 11
 .global __exception_vectors_start
 __exception_vectors_start:
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE current_el0_synchronous   // 0x000
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE current_el0_irq           // 0x080
-    FIQ_DUMMY                                                       // 0x100
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE current_el0_serror        // 0x180
+    SAVE_CALL_RESTORE 0x000 current_el0_synchronous   // 0x000
+    SAVE_CALL_RESTORE 0x080 current_el0_irq           // 0x080
+    FIQ_DUMMY         0x100                           // 0x100
+    SAVE_CALL_RESTORE 0x180 current_el0_serror        // 0x180
 
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE current_elx_synchronous   // 0x200
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE current_elx_irq           // 0x280
-    FIQ_DUMMY                                                       // 0x300
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE current_elx_serror        // 0x380
+    SAVE_CALL_RESTORE 0x200 current_elx_synchronous   // 0x200
+    SAVE_CALL_RESTORE 0x280 current_elx_irq           // 0x280
+    FIQ_DUMMY         0x300                           // 0x300
+    SAVE_CALL_RESTORE 0x380 current_elx_serror        // 0x380
 
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE lower_aarch64_synchronous // 0x400
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE lower_aarch64_irq         // 0x480
-    FIQ_DUMMY                                                       // 0x500
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE lower_aarch64_serror      // 0x580
+    SAVE_CALL_RESTORE 0x400 lower_aarch64_synchronous // 0x400
+    SAVE_CALL_RESTORE 0x480 lower_aarch64_irq         // 0x480
+    FIQ_DUMMY         0x500                           // 0x500
+    SAVE_CALL_RESTORE 0x580 lower_aarch64_serror      // 0x580
 
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE lower_aarch32_synchronous // 0x600
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE lower_aarch32_irq         // 0x680
-    FIQ_DUMMY                                                       // 0x700
-    SAVE_CONTEXT_CALL_HANDLER_AND_RESTORE lower_aarch32_serror      // 0x780
+    SAVE_CALL_RESTORE 0x600 lower_aarch32_synchronous // 0x600
+    SAVE_CALL_RESTORE 0x680 lower_aarch32_irq         // 0x680
+    FIQ_DUMMY         0x700                           // 0x700
+    SAVE_CALL_RESTORE 0x780 lower_aarch32_serror      // 0x780
 
-.global __restore_context
 __restore_context:
-    ldr    x19,      [sp, #16 * 16]
-    ldp    x30, x20, [sp, #16 * 15]
+    ldp    lr,  x1,  [sp, #16 * 15]
+    ldp    x2,  x3,  [sp, #16 * 16]
 
-    msr    ELR_EL1, x19
-    msr    SPSR_EL1, x20
+    msr    ELR_EL1,   x1
+    msr    SPSR_EL1,  x2
+    msr    TTBR0_EL1, x3
 
     ldp    x0,  x1,  [sp, #16 * 0]
     ldp    x2,  x3,  [sp, #16 * 1]

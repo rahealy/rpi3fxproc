@@ -31,13 +31,13 @@
 //use register::mmio::ReadWrite;
 use peripherals::i2s;
 //use peripherals::i2s::I2S;
+use peripherals::dma;
 use peripherals::dma::*;
 use peripherals::debug;
 //use rack::effect::SampleType;
 //use common::buffer::{Queue, Read, Write, Amount};
 //use common::buffer::{Queue};
 
-const I2S_FIFO: u32 = i2s::PCM_BASE + 0x4; //FIFO Buffer at offset 0x4.
 const BUFFER_LEN: usize = i2s::FIFO_LEN;
 
 /**********************************************************************
@@ -49,7 +49,7 @@ type Buffer = [i32; BUFFER_LEN];
 #[repr(C)]
 #[repr(align(32))]
 pub struct DoubleBuffer {
-    blks: [ControlBlock; 2],
+    blks: [ControlBlockInstance; 2],
     bufs: [Buffer; 2],
     amts: [usize; 2],
     chan: usize,
@@ -64,7 +64,7 @@ impl Default for DoubleBuffer {
     fn default() -> Self {
         DoubleBuffer {
             bufs: [[0; BUFFER_LEN]; 2],
-            blks: [ControlBlock::default(); 2],
+            blks: [ControlBlockInstance::default(); 2],
             amts: [0; 2],
             chan: 0,
             cur: false,
@@ -74,83 +74,85 @@ impl Default for DoubleBuffer {
 }
 
 impl DoubleBuffer {
+    ///
+    ///Memory location of the DMA Control block as a u32.
+    ///
+    fn blkloc(&self, idx: usize) -> u32 {
+        &self.blks[idx] as *const ControlBlockInstance as u32
+    }
+
+    ///
+    ///Memory location of the buffer as a u32.
+    ///
+    fn bufloc(&self, idx: usize) -> u32 {
+        &(self.bufs[idx]) as *const Buffer as u32
+    }
+
+    ///
+    ///Set DMA channel this buffer will use.
+    ///
     fn init(&mut self, chan: usize) {
+        //Sanity check for required DMA control block alignment.
+        if self.blkloc(0) % 32 != 0 { panic!(); }
+        if self.blkloc(1) % 32 != 0 { panic!(); }
+
         if chan < 15 {
-            self.dma.ENABLE.set (
-                self.dma.ENABLE.get() | (1 << chan) as u32
-            );
             self.chan = chan;
+            self.blks[0].NEXTCONBK.set(dma::phy_mem_to_vc_loc(self.blkloc(1)));
+            self.blks[1].NEXTCONBK.set(dma::phy_mem_to_vc_loc(self.blkloc(0)));
+            self.blks[0].TXFR_LEN.set(BUFFER_LEN as u32);
+            self.blks[1].TXFR_LEN.set(BUFFER_LEN as u32);
         } else {
             panic!("Specified channel out of range.");
         }
     }
 
     fn activate(&mut self) {
-        if self.chan < 15 {
-            if !self.dma.CHANNELS[self.chan].CS.is_set(CS::ACTIVE) {
-                self.dma.CHANNELS[self.chan].CS.modify(CS::DISDEBUG::CLEAR);
-                self.dma.CHANNELS[self.chan].CONBLK_AD.write (
-                    CONBLK_AD::SCB_ADDR.val (
-                        &self.blks[0] as *const ControlBlock as u32
-                    )
-                );
-                self.dma.CHANNELS[self.chan].CS.modify(CS::ACTIVE::SET);
-            } else {
-                panic!("Specified channel already activated.");
-            }
-        } else {
-            panic!("Specified channel out of range.");
-        }
+        use cortex_a::asm;
+
+//FIXME: Is memory barrier necessary?
+//        unsafe { cortex_a::barrier::dmb(cortex_a::barrier::SY); }
+
+        self.dma.ENABLE.set ( 
+            self.dma.ENABLE.get() | (1 << self.chan)
+        );
+
+        self.dma.CHANNELS[self.chan].CS.modify ( CS::RESET::SET );
+
+        self.dma.CHANNELS[self.chan].CONBLK_AD.write ( 
+            CONBLK_AD::SCB_ADDR.val (dma::phy_mem_to_vc_loc(self.blkloc(0)))
+        );
+
+        self.dma.CHANNELS[self.chan].CS.modify(
+            CS::WAIT_FOR_OUTSTANDING_WRITES::SET + //Finish transfer before moving to next.
+            CS::PANIC_PRIORITY.val(15)           + //? Because Circle does this.
+            CS::PRIORITY.val(1)                  + //? Because Circle does this too.
+            CS::ACTIVE::SET                        //Away we go!
+        );
+
+//FIXME: Is memory barrier necessary?
+//        unsafe { cortex_a::barrier::dmb(cortex_a::barrier::SY); }
     }
 
-    pub fn print_status(&self) {
-        debug::out("CONBLK_AD: ");
-        debug::u32hex(self.dma.CHANNELS[self.chan].CONBLK_AD.get() as u32);
-        debug::out("\n");
-
-        debug::out("CS: ");
-        debug::u32bits(self.dma.CHANNELS[self.chan].CS.get() as u32);
-        debug::out("\n");
-
-        debug::out("INT: ");
-        debug::u32hex(self.dma.CHANNELS[self.chan].CS.is_set(CS::INT) as u32);
-        debug::out("\n");
-
-        debug::out("END: ");
-        debug::u32hex(self.dma.CHANNELS[self.chan].CS.is_set(CS::END) as u32);
-        debug::out("\n");
-
-        debug::out("ACTIVE: ");
-        debug::u32hex(self.dma.CHANNELS[self.chan].CS.is_set(CS::ACTIVE) as u32);
-        debug::out("\n");
+    pub fn print_debug(&self) {
+        debug::out("Block 0 (");
+        debug::u32hex(self.blkloc(0));
+        debug::out("): \n");
+        self.blks[0].print_debug();
         
-        debug::out("ERROR: ");
-        debug::u32hex(self.dma.CHANNELS[self.chan].CS.is_set(CS::ERROR) as u32);
-        debug::out("\n");        
+        debug::out("Block 1 (");
+        debug::u32hex(self.blkloc(1));
+        debug::out("): \n");
+        self.blks[1].print_debug();
 
-        debug::out("DEBUG: ");
-        debug::u32bits(self.dma.CHANNELS[self.chan].DEBUG.get() as u32);
         debug::out("\n");
+        debug::out("DMA Channel ");
+        debug::u32hex(self.chan as u32);
+        debug::out(":\n");
         
-        debug::out("TXFR_LEN: ");
-        debug::u32hex(self.dma.CHANNELS[self.chan].TXFR_LEN.get() as u32);
-        debug::out("\n");
-
-        debug::out("TI BLK 0,1 & DMA: \n");
-        debug::u32bits(self.blks[0].TI);
-        debug::out("\n");
-        debug::u32bits(self.blks[1].TI);
-        debug::out("\n");
-        debug::u32bits(self.dma.CHANNELS[self.chan].TI.get() as u32);
-        debug::out("\n");
-
-        debug::out("ENABLE: ");
-        debug::u32bits(self.dma.ENABLE.get() as u32);
-        debug::out("\n");
-
-        debug::out("INT_STATUS: ");
-        debug::u32bits(self.dma.INT_STATUS.get() as u32);
-        debug::out("\n");
+        self.dma.CHANNELS[self.chan].print_debug();
+        self.dma.INT_STATUS.print_debug();
+        self.dma.ENABLE.print_debug();
     }
 }
 
@@ -163,41 +165,46 @@ impl DoubleBuffer {
 pub struct Rx (DoubleBuffer);
 
 impl Rx {
-    pub fn init(&mut self, chan: usize) {
 
+///
+///Initialize and activate i2s Rx dma buffer.
+///
+///TI From Linux: Channel 8.
+///0x00030419
+///0b0000_0000_0000_0011_0000_0100_0001_1001
+///INTEN::SET
+///WAIT_RESP
+///DEST_INC
+///SRC_DREQ
+///PCM_RX
+///
+    pub fn activate(&mut self, chan: usize) {
         self.0.init(chan);
 
         for i in 0..2 {
-//TI From Linux: Channel 8.
-//0x00030419
-//0b0000_0000_0000_0011_0000_0100_0001_1001
-//INTEN::SET
-//WAIT_RESP
-//DEST_INC
-//SRC_DREQ
-//PCM_RX
-//
-            self.0.blks[i].TI = (
+            self.0.blks[i].TI.write (
                 TI::PERMAP::PCM_RX + //Use PCM_RX to gate reads.
                 TI::SRC_DREQ::SET  + //PCM_RX provides the DREQ.
                 TI::DEST_INC::SET  + //Increment destination after each write.
                 TI::WAIT_RESP::SET + //? Wait for AXI response for each write.
                 TI::INTEN::SET       //Interrupt on completion.
-            ).value;
+            );
 
-            self.0.blks[i].SOURCE_AD = I2S_FIFO;
-            self.0.blks[i].DEST_AD = &self.0.bufs[i] as *const Buffer as u32;
-            self.0.blks[i].TXFR_LEN = BUFFER_LEN as u32;
+            self.0.blks[i].SOURCE_AD.set (
+                dma::mmio_to_vc_loc(i2s::PCM_FIFO)
+            );
+            
+            self.0.blks[i].DEST_AD.set (
+                dma::phy_mem_to_vc_loc(self.0.bufloc(i))
+            );
         }
 
-        self.0.blks[0].NEXTCONBK = &self.0.blks[1] as *const ControlBlock as u32;
-        self.0.blks[1].NEXTCONBK = &self.0.blks[0] as *const ControlBlock as u32;
         self.0.activate();
     }
 
     pub fn print_status(&self) {
-        debug::out("Rx Status:\n");
-        self.0.print_status(); 
+        debug::out("\nRx Status:\n");
+        self.0.print_debug();
     }
 }
 
@@ -211,156 +218,47 @@ impl Rx {
 pub struct Tx (DoubleBuffer);
 
 impl Tx {
-    pub fn init(&mut self, chan: usize) {
+
+///
+///Initialize and activate i2s Tx dma buffer.
+///
+///TI From Linux: Channel 5.
+///0x00020149
+///0b0000_0000_0000_0010_0000_0001_0100_1001
+///INTEN
+///WAIT_RESP
+///DEST_DREQ
+///SRC_INC
+///PCM_TX
+///TXFR_LEN 2024
+///
+    pub fn activate(&mut self, chan: usize) {
         self.0.init(chan);
 
         for i in 0..2 {
-//TI From Linux: Channel 5.
-//0x00020149
-//0b0000_0000_0000_0010_0000_0001_0100_1001
-//INTEN
-//WAIT_RESP
-//DEST_DREQ
-//SRC_INC
-//PCM_TX
-//TXFR_LEN 2024
-//
-            self.0.blks[i].TI = (
-                TI::PERMAP::PCM_TX + //2
-                TI::SRC_INC::SET   + //Increment source 
-                TI::DEST_DREQ::SET + //Use DREQ.
-                TI::WAIT_RESP::SET +
-                TI::INTEN::SET
-            ).value;
+            self.0.blks[i].TI.write (
+                TI::PERMAP::PCM_TX + //Use PCM_TX to gate reads.
+                TI::SRC_INC::SET   + //Increment source after each read.
+                TI::DEST_DREQ::SET + //PCM_TX provides the DREQ.
+                TI::WAIT_RESP::SET + //? Wait for AXI response for each write.
+                TI::INTEN::SET       //Interrupt on completion.
+            );
 
-            debug::out("Tx.init() blks.TI: ");
-            debug::u32bits(self.0.blks[i].TI);
-            debug::out("\n");
-
-            self.0.blks[i].SOURCE_AD = &self.0.bufs[i] as *const Buffer as u32;
-            self.0.blks[i].DEST_AD = I2S_FIFO;
-            self.0.blks[i].TXFR_LEN = BUFFER_LEN as u32;
+            self.0.blks[i].SOURCE_AD.set(dma::phy_mem_to_vc_loc(self.0.bufloc(i)));
+            self.0.blks[i].DEST_AD.set(dma::mmio_to_vc_loc(i2s::PCM_FIFO));
         }
-
-        self.0.blks[0].NEXTCONBK = &self.0.blks[1] as *const ControlBlock as u32;
-        self.0.blks[1].NEXTCONBK = &self.0.blks[0] as *const ControlBlock as u32;
+        
+        debug::out("i2squeue::Tx::activate(): Configured but not activated\n");
+        self.print_status();
+        
         self.0.activate();
     }
 
     pub fn print_status(&self) { 
-        debug::out("Tx Status:\n");
-        self.0.print_status(); 
+        debug::out("\nTx Status:\n");
+        self.0.print_debug(); 
     }
 }
-
-
-// impl Rx {
-//     ///
-//     ///Poll rx FIFO and drain when ready.
-//     ///
-// 
-//     pub fn poll(&mut self) {
-// //         use cortex_a::{asm};
-//         use cortex_a::barrier;
-// //         use core::sync::atomic::{compiler_fence, Ordering};
-// //         unsafe{ barrier::isb(barrier::SY); }
-// //         compiler_fence(Ordering::SeqCst);
-//         
-//         if self.i2s().CS_A.is_set(CS_A::RXERR) {
-//             self.errcnt += 1;
-//             self.i2s().CS_A.modify(CS_A::RXERR::SET);
-//         }
-// 
-//         if self.i2s().CS_A.is_set(CS_A::RXR) {
-//         unsafe{ barrier::isb(barrier::SY); }
-//             while self.i2s().CS_A.is_set(CS_A::RXD) { //Bit 20.
-//                 self.queue.enqueue (
-//                     ((self.i2s().FIFO_A.get() as i32) as SampleType) / 8388607.0
-//                 );
-//             }
-//         unsafe{ barrier::isb(barrier::SY); }
-//         }
-//     }
-//     
-//     #[inline]
-//     pub fn ready(&self) -> bool {
-//         self.queue.amt() >= rack::unit::PROCESS_BLOCK_LEN
-//     }
-// 
-// ///
-// ///Poll rx FIFO and drain. Output a square wave.
-// ///
-//     #[allow(dead_code)]
-//     pub fn test_poll_sq(&mut self) {
-//         if self.i2s().CS_A.is_set(CS_A::RXERR) {
-//             self.errcnt += 1;
-//             self.i2s().CS_A.modify(CS_A::RXERR::SET);
-//         }
-// 
-//         if self.i2s().CS_A.is_set(CS_A::RXR) {
-//             while self.i2s().CS_A.is_set(CS_A::RXD) {
-//                 self.queue.enqueue (
-//                     if (self.recvd % 32) == 0 { -1.0 } else { 1.0 }
-//                 );
-//                 self.recvd += 1;
-//                 self.i2s().FIFO_A.get();
-//             }
-//         }
-//     }
-// 
-// ///
-// ///Poll rx FIFO and drain. Output total number of samples received.
-// ///
-//     #[allow(dead_code)]
-//     pub fn test_poll_cnt(&mut self) {
-//         if self.i2s().CS_A.is_set(CS_A::RXERR) {
-//             self.errcnt += 1;
-//             self.i2s().CS_A.modify(CS_A::RXERR::SET);
-//         }
-// 
-//         if self.i2s().CS_A.is_set(CS_A::RXR) {
-//             while self.i2s().CS_A.is_set(CS_A::RXD) {
-//                 self.queue.enqueue(self.recvd as SampleType);
-//                 self.recvd += 1;
-//                 self.i2s().FIFO_A.get();
-//             }
-//         }
-//     }
-// }
-//
-// #[derive(Default)]
-// pub struct Tx {
-//     pub queue: Queue<SampleType>,
-//     pub errcnt: usize,
-// }
-// 
-// impl I2S for Tx {}
-// 
-// impl Tx {
-// ///
-// ///Poll tx FIFO and fill when ready.
-// ///
-//     pub fn poll(&mut self) {
-//         if self.i2s().CS_A.is_set(CS_A::TXERR) {
-//             self.errcnt += 1;
-//             self.i2s().CS_A.modify(CS_A::TXERR::SET);
-//         }
-// 
-//         if self.i2s().CS_A.is_set(CS_A::TXW) {
-//             while self.i2s().CS_A.is_set(CS_A::TXD) {
-//                 if self.queue.empty_queue() {
-//                     break;
-//                 } else {
-//                     self.i2s().FIFO_A.write(
-//                         FIFO_A::DATA.val(
-//                             ((self.queue.dequeue() * 8388607.0) as i32) as u32
-//                         )
-//                     );
-//                 }
-//             }
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

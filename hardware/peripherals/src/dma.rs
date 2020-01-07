@@ -24,16 +24,37 @@
 
 use super::MMIO_BASE;
 use core::ops;
+use core::mem;
+use crate::debug;
 use register::register_bitfields;
 use register::mmio::ReadWrite;
 
 ///
 ///DMA0 registers control the DMA peripheral.
 ///
-const DMA0_OFFSET:     u32 = 0x0000_07000;
-const DMA0_BASE:       u32 = MMIO_BASE + DMA0_OFFSET;
+pub const DMA0_OFFSET: u32 = 0x0000_07000;
+pub const DMA0_BASE:   u32 = MMIO_BASE + DMA0_OFFSET;
 const INT_STATUS_BASE: u32 = DMA0_BASE + 0xFE0;
 const ENABLE_BASE:     u32 = DMA0_BASE + 0xFF0;
+
+///
+///DMA uses VC CPU Bus addresses to access memory.
+///
+#[inline]
+pub fn phy_mem_to_vc_loc(loc: u32) -> u32 {
+    (loc & 0x00FF_FFFF) + 0xC0000000 //Direct uncached.
+//    (loc & 0x00FF_FFFF) + 0x80000000 //L2 Cache only. 
+//    (loc & 0x00FF_FFFF) + 0x40000000 //L2 Cache coherent non allocating.
+}
+
+///
+///DMA uses VC CPU Bus addresses to access peripheral I/0.
+///
+#[inline]
+pub fn mmio_to_vc_loc(loc: u32) -> u32 {
+//Mask off lower 24 bits and set upper byte to 0x7E
+    (loc & 0x00FF_FFFF) + 0x7E000000
+}
 
 
 register_bitfields! {
@@ -246,22 +267,73 @@ register_bitfields! {
 }
 
 /**********************************************************************
- * ControlBlockDMA
+ * ControlBlock
  *********************************************************************/
 
 #[repr(C)]
-#[repr(align(32))] //Blocks must be aligned to a 256 bit (32 byte) boundary.
 #[allow(non_snake_case)]
-#[derive(Default, Copy, Clone)]
 pub struct ControlBlock {
-    pub TI:        u32,
-    pub SOURCE_AD: u32,
-    pub DEST_AD:   u32,
-    pub TXFR_LEN:  u32,
-    pub STRIDE:    u32,
-    pub NEXTCONBK: u32,
+    pub TI:        ReadWrite<u32, TI::Register>,
+    pub SOURCE_AD: ReadWrite<u32, SOURCE_AD::Register>,
+    pub DEST_AD:   ReadWrite<u32, DEST_AD::Register>,
+    pub TXFR_LEN:  ReadWrite<u32, TXFR_LEN::Register>,
+    pub STRIDE:    ReadWrite<u32, STRIDE::Register>,
+    pub NEXTCONBK: ReadWrite<u32, NEXTCONBK::Register>,
     __RES0:        u32,
     __RES1:        u32,
+}
+
+impl ControlBlock {
+    pub fn print_debug(&self) {
+        debug::out("TI: ");
+        debug::u32bits(self.TI.get());
+        debug::out("\n");
+
+        debug::out("SOURCE_AD: ");
+        debug::u32hex(self.SOURCE_AD.get());
+        debug::out("\n");
+
+        debug::out("DEST_AD: ");
+        debug::u32hex(self.DEST_AD.get() as u32);
+        debug::out("\n");
+
+        debug::out("TXFR_LEN::XLENGTH: ");
+        debug::u32hex(self.TXFR_LEN.read(TXFR_LEN::XLENGTH) as u32);
+        debug::out("\n");
+
+        debug::out("TXFR_LEN::YLENGTH: ");
+        debug::u32hex(self.TXFR_LEN.read(TXFR_LEN::YLENGTH) as u32);
+        debug::out("\n");
+
+        debug::out("D_STRIDE: ");
+        debug::u32hex(self.STRIDE.read(STRIDE::D_STRIDE) as u32);
+        debug::out("\n");
+
+        debug::out("S_STRIDE: ");
+        debug::u32hex(self.STRIDE.read(STRIDE::S_STRIDE) as u32);
+        debug::out("\n");
+
+        debug::out("NEXTCONBK: ");
+        debug::u32hex(self.NEXTCONBK.get() as u32);
+        debug::out("\n");
+    }
+}
+
+#[repr(C)]
+#[repr(align(32))] //Blocks must be aligned to a 256 bit (32 byte) boundary.
+#[derive(Default, Copy, Clone)]
+pub struct ControlBlockInstance {
+    data: [u8; mem::size_of::<ControlBlock>()],
+}
+
+impl ops::Deref for ControlBlockInstance {
+    type Target = ControlBlock;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            mem::transmute::<&ControlBlockInstance, &ControlBlock>(self)
+        }
+    }
 }
 
 /**********************************************************************
@@ -279,8 +351,56 @@ pub struct RegisterBlockDMA {
     pub TXFR_LEN:  ReadWrite<u32, TXFR_LEN::Register>,
     pub STRIDE:    ReadWrite<u32, STRIDE::Register>,
     pub NEXTCONBK: ReadWrite<u32, NEXTCONBK::Register>,
-    pub DEBUG:     ReadWrite<u32, DEBUG::Register>,
-    __RES0:        [u8; 220], //9 * 4 + 220 = 256 
+    pub DEBUG:     ReadWrite<u32, DEBUG::Register>, //0x20-0x23
+    __RES0:        [u8; 220],     //0x24-0xFF
+}
+
+impl RegisterBlockDMA {
+    pub fn print_debug(&self) {
+        debug::out("CS: ");
+        debug::u32bits(self.CS.get());
+        debug::out("\n");
+    
+        debug::out("CONBLK_AD: ");
+        debug::u32hex(self.CONBLK_AD.get());
+        debug::out("\n");
+
+        debug::out("TI: ");
+        debug::u32bits(self.TI.get());
+        debug::out("\n");
+
+        debug::out("SOURCE_AD: ");
+        debug::u32hex(self.SOURCE_AD.get());
+        debug::out("\n");
+
+        debug::out("DEST_AD: ");
+        debug::u32hex(self.DEST_AD.get() as u32);
+        debug::out("\n");
+
+        debug::out("TXFR_LEN::XLENGTH: ");
+        debug::u32hex(self.TXFR_LEN.read(TXFR_LEN::XLENGTH) as u32);
+        debug::out("\n");
+
+        debug::out("TXFR_LEN::YLENGTH: ");
+        debug::u32hex(self.TXFR_LEN.read(TXFR_LEN::YLENGTH) as u32);
+        debug::out("\n");
+
+        debug::out("D_STRIDE: ");
+        debug::u32hex(self.STRIDE.read(STRIDE::D_STRIDE) as u32);
+        debug::out("\n");
+
+        debug::out("S_STRIDE: ");
+        debug::u32hex(self.STRIDE.read(STRIDE::S_STRIDE) as u32);
+        debug::out("\n");
+
+        debug::out("NEXTCONBK: ");
+        debug::u32hex(self.NEXTCONBK.get() as u32);
+        debug::out("\n");
+
+        debug::out("DEBUG: ");
+        debug::u32bits(self.DEBUG.get());
+        debug::out("\n");
+    }
 }
 
 /**********************************************************************
@@ -304,8 +424,14 @@ impl ops::Deref for INT_STATUS_INTERNAL {
 
 impl INT_STATUS_INTERNAL {
     #[inline]
-    fn ptr() -> *const ReadWrite<u32, INT_STATUS::Register> {
+    pub fn ptr() -> *const ReadWrite<u32, INT_STATUS::Register> {
         INT_STATUS_BASE as *const _
+    }
+
+    pub fn print_debug(&self) {
+        debug::out("INT_STATUS: ");
+        debug::u32bits(self.get());
+        debug::out("\n");
     }
 }
 
@@ -333,6 +459,12 @@ impl ENABLE_INTERNAL {
     #[inline]
     fn ptr() -> *const ReadWrite<u32, ENABLE::Register> {
         ENABLE_BASE as *const _
+    }
+
+    pub fn print_debug(&self) {
+        debug::out("ENABLE: ");
+        debug::u32bits(self.get());
+        debug::out("\n");
     }
 }
 

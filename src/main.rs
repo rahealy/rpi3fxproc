@@ -53,15 +53,7 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 
 #[allow(unused_imports)]
 use startup;
-use startup::STACK_START;
-
-///
-///Heap starts at base of stack with an 8 byte buffer between the two.
-///FIXME: For now use the whole memory space. multi-core will come later.
-///
-const HEAP_START: usize = (STACK_START + 8) as usize;
-const HEAP_SIZE:  usize = (MMIO_BASE as usize) - HEAP_START;
-
+use startup::{HEAP_START, HEAP_SIZE};
 
 ///
 /// Rust requires a panic handler. On panic go into an infinite loop.
@@ -127,7 +119,7 @@ fn init_ultra2() {
              pdn_mic(false).   //Power up microphone.
              pdn_adc(false).   //Power up ADC.
              pdn_dac(false).   //Power up DAC
-             mode(Mode::Interrupt). //
+             mode(Mode::DMA). //
              smplrt(SAMPLE_RATE_USIZE as u32); //48kHz sample rate.
 
     if let Err(err) = ultra2.load(&u2params) {
@@ -171,26 +163,21 @@ fn print_splash() {
 fn main() -> ! {
 //Init subsystems.
     Uart0::init();
-//     I2C1::init();
-//     I2S0::init();
+    I2C1::init();
+    I2S0::init();
+//    init_heap();
+
+//    let mut dbuf_rx: i2squeue::Rx = dbuf::Rx::default();
+    let mut dbuf_tx: i2squeue::Tx = dbuf::Tx::default();
 
     print_splash();
-    init_heap();
-//    init_ultra2();
+    init_ultra2();
 
-    let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
-    unsafe { core::ptr::read_volatile(big_addr as *mut u64) };
+//    dbuf_rx.activate(8);
+    dbuf_tx.activate(5);
 
-//    Uart0::init();
-
-//     let mut dbuf_rx: i2squeue::Rx = dbuf::Rx::default();
-//     let mut dbuf_tx: i2squeue::Tx = dbuf::Tx::default();
-// 
-//     dbuf_rx.init(8);
-//     dbuf_tx.init(5);
-// 
-//     dbuf_rx.print_status();
-//     dbuf_tx.print_status();
+//    dbuf_rx.print_status();
+    dbuf_tx.print_status();
 
 //    sound_test();
 
