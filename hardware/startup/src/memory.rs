@@ -224,7 +224,7 @@ pub unsafe fn init() {
                  DESCRIPTOR::LVL2_OUTPUT_ADDR_4KiB.val(i as u64)).value;
     }
 
-//Entries describe peripheral addresses starting at MMIO_BASE and exetending
+//Entries describe peripheral addresses starting at MMIO_BASE and extending
 //to the end of the 1GB address space covered by the LVL2_TABLE.
     print_range(MMIO_BASE as usize, 0x4000_0000, 0x20_0000);
     uart.puts("\r\n");

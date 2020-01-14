@@ -48,7 +48,7 @@ none:
 	cargo objcopy -- --strip-all -O binary ./$(KERNEL) ./$(KERNEL_IMAGE)
 
 softfloat_debug:
-	cargo xrustc --target=$(TARGET_SOFTFLOAT) -- --verbose --emit asm
+	cargo xrustc --target=$(TARGET_SOFTFLOAT) -- --verbose --emit asm 
 	cp ./target/$(TARGET_SOFTFLOAT)/debug/$(NAME) ./$(KERNEL)
 	cargo objcopy -- --strip-all -O binary ./$(KERNEL) ./$(KERNEL_IMAGE)
 
