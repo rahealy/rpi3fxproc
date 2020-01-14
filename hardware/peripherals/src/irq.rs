@@ -28,45 +28,57 @@ use register::register_bitfields;
 use register::mmio::ReadWrite;
 use crate::debug; 
 
-register_bitfields! {
-    u32,
-    BASIC_PENDING [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ],
-    PENDING_1 [
-          UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ],
-    PENDING_2 [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ],
-    FIQ [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []    
-    ],
-    ENABLE_1 [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ],
-    ENABLE_2 [
-        PCM OFFSET(55) NUMBITS(1) []
-    ],
-    ENABLE_BASIC [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ],
-    DISABLE_1 [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ],
-    DISABLE_2 [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ],
-    DISABLE_BASIC [
-        UNIMPLEMENTED OFFSET(0) NUMBITS(32) []
-    ]
-}
-
 ///
 ///IRQ registers. 0x7E00B000
 ///
 const IRQ_OFFSET:   u32 = 0x0000_B000;
-pub const IRQ_BASE: u32 = MMIO_BASE + IRQ_OFFSET + 0x200;
+pub const IRQ_BASE: u32 = MMIO_BASE + IRQ_OFFSET + 0x200; //? First register is at 0x200.
+
+register_bitfields! {
+    u32,
+
+    BASIC_PENDING [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    PENDING_1 [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    PENDING_2 [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    FIQ [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    ENABLE_1 [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    ENABLE_2 [
+        RAW OFFSET(0) NUMBITS(32) [],
+        PCM OFFSET(23) NUMBITS(1) []
+    ],
+
+    ENABLE_BASIC [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    DISABLE_1 [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    DISABLE_2 [
+        RAW OFFSET(0) NUMBITS(32) []
+    ],
+
+    DISABLE_BASIC [
+        RAW OFFSET(0) NUMBITS(32) []
+    ]
+}
+
 
 ///
 ///Puts DMA channels 0-14, interrupt status and enable registers in one
@@ -105,5 +117,35 @@ impl IRQ {
     #[inline]
     fn ptr() -> *const RegisterBlockIRQ {
         IRQ_BASE as *const _
+    }
+
+    pub fn print_status(&self) {
+        debug::out("BASIC_PENDING: ");
+        debug::u32bits(self.BASIC_PENDING.get());
+        debug::out("\n");
+
+        debug::out("PENDING_1: ");
+        debug::u32bits(self.PENDING_1.get());
+        debug::out("\n");
+
+        debug::out("PENDING_2: ");
+        debug::u32bits(self.PENDING_2.get());
+        debug::out("\n");
+
+        debug::out("FIQ: ");
+        debug::u32bits(self.FIQ.get());
+        debug::out("\n");
+
+        debug::out("ENABLE_1: ");
+        debug::u32bits(self.ENABLE_1.get());
+        debug::out("\n");
+
+        debug::out("ENABLE_2: ");
+        debug::u32bits(self.ENABLE_2.get());
+        debug::out("\n");
+
+        debug::out("ENABLE_BASIC: ");
+        debug::u32bits(self.ENABLE_BASIC.get());
+        debug::out("\n");
     }
 }
