@@ -36,7 +36,11 @@ use i2sdbuf;
 use peripherals::debug;
 use peripherals::i2c::*;
 use peripherals::i2s::*;
-use peripherals::timer::{Timer1};
+use peripherals::dma;
+use peripherals::dma::*;
+use peripherals::irq;
+use peripherals::irq::*;
+use peripherals::timer::{Timer, Timer1};
 use peripherals::uart::Uart0;
 use peripherals::MMIO_BASE;
 use rack::effect::SAMPLE_RATE_USIZE;
@@ -119,7 +123,7 @@ fn init_ultra2() {
              pdn_mic(false).   //Power up microphone.
              pdn_adc(false).   //Power up ADC.
              pdn_dac(false).   //Power up DAC
-             mode(Mode::DMA). //
+             mode(Mode::Interrupt).  //Use DMA polling.
              smplrt(SAMPLE_RATE_USIZE as u32); //48kHz sample rate.
 
     if let Err(err) = ultra2.load(&u2params) {
@@ -155,7 +159,6 @@ fn print_splash() {
 }
 
 
-
 ///
 /// Main loop.
 ///
@@ -168,28 +171,32 @@ fn main() -> ! {
 //    init_heap(); //FIXME: This throws exceptions. 
                    //FIXME: Refactor to use stack only structures in the future.
 
-    let i2s = I2S0::default();
-//    let mut dbuf_rx = i2sdbuf::Rx::default();
+    let i2s   = I2S0::default();
+    let timer = Timer1::default();
+    let _dma  = DMA::default();
+    let irq   = IRQ::default();
+
+    let mut dbuf_rx = i2sdbuf::Rx::default();
     let mut dbuf_tx = i2sdbuf::Tx::default();
 
-    print_splash();      //Hello world.
+    print_splash();      //Hello world.    
     init_ultra2();       //Intializes ultra2 and i2s subsystem.
 
-//    dbuf_rx.activate(8); //Activate Rx on DMA channel 8.
-    dbuf_tx.activate(5); //Activate Tx on DMA channel 5.
-
-//    i2s.rx_on(true);     //Turn on I2S.
+    i2s.rx_on(true);     //Turn on I2S.
     i2s.tx_on(true);     //Turn on I2S.
 
-//    dbuf_rx.print_status();
-    dbuf_tx.print_status();
+    sound_test();
 
-//    sound_test();
+//     dbuf_rx.activate(8); //Activate Rx on DMA channel 8.
+//     dbuf_tx.activate(5); //Activate Tx on DMA channel 5.
 
-//    debug::out("rpi3fxproc::main(): Begin processing.\n");
-    loop { 
-//        debug::out(".");
-        cortex_a::asm::wfe();
+    debug::out("rpi3fxproc::main(): Begin processing.\n");
+    loop {
+        dbuf_rx.print_status();
+        dbuf_tx.print_status();
+        irq.print_status();
+        timer.one_shot(1000000);
+//        cortex_a::asm::wfe();
     }
 }
 
@@ -302,6 +309,67 @@ fn main() -> ! {
 // //         tx.errcnt = 0;
 //     }
 // }
+
+#[allow(dead_code)]
+fn test_dma(chan: usize) {
+//0x007FFD40 DMA control block on the stack. 
+//0x00084920 DMA control block part of read-only program memory. 
+    const CBI: dma::ControlBlockInstance = dma::ControlBlockInstance {
+        data: [
+            0b0000_0000_0000_0010_0000_0001_0100_1001,
+            0x007FFD80,
+            0x7E203004,
+            0x00000040,
+            0x00000000,
+            0x00000000,
+            0x00000000,
+            0x00000000
+        ]
+    };
+
+    let dma = DMA::default();
+    let cb_loc = &CBI as *const ControlBlockInstance as u32;
+    
+    debug::out("main::test_dma(): cb_loc = ");
+    debug::u32hex(cb_loc);
+    debug::out(" chan = ");
+    debug::u32hex(chan as u32);
+    debug::out("\n");
+
+    CBI.print_debug();
+    debug::out("\n");
+
+    dma.ENABLE.set (
+        dma.ENABLE.get() | (1 << chan)
+    );
+
+    dma.CHANNELS[chan].CS.modify ( 
+        CS::RESET::SET 
+    );
+
+    dma.CHANNELS[chan].CONBLK_AD.write ( 
+        CONBLK_AD::SCB_ADDR.val (cb_loc)
+    );
+
+    dma.CHANNELS[chan].CS.modify (
+        CS::WAIT_FOR_OUTSTANDING_WRITES::SET + //Finish transfer before moving to next.
+        CS::PANIC_PRIORITY.val(15)           + //? Because Circle does this.
+        CS::PRIORITY.val(1)                  + //? Because Circle does this too.
+        CS::ACTIVE::SET                        //Away we go!
+    );
+
+    let timer = Timer1::default();
+    debug::out("main::test_dma():\n");
+    loop {
+        dma.CHANNELS[chan].print_debug();
+        dma.INT_STATUS.print_debug();
+        dma.ENABLE.print_debug();
+        debug::out("\n");
+
+        timer.one_shot(1000000);
+        break;
+    }
+}
 
 
 ///

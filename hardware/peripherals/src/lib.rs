@@ -23,6 +23,7 @@
  */ 
 
 #![no_std]
+#![feature(asm)]
 
 ///
 ///Start address of the I/O peripherals mapped to the physical memory by
@@ -35,7 +36,38 @@ pub const MMIO_BASE: u32 = 0x3F000000;
 ///Start address of the I/O peripherals mapped to the VC CPU bus. This
 ///base should be used when setting up the DMA controller.
 ///
-pub const VCIO_BASE: u32 = 0x7E000000;
+pub const VCIO_BASE: u32 = 0x7E00_0000;
+
+
+///
+///Flushes num 64bit blocks of memory from the cache starting at base.
+///
+#[inline]
+pub fn flush_dcache_range(base: u64, num: u64) {
+    for i in 0..num {
+        unsafe { 
+            asm!("dc civac, $0" :: "r"(base + ((i * 8) as u64)) :: "volatile"); 
+        }
+    }
+}
+
+///
+///DMA uses VC CPU Bus addresses to access memory.
+///
+#[inline]
+pub fn phy_mem_to_vc_loc(loc: u32) -> u32 {
+//Mask off lower 24 bits and add base.
+    (loc & 0x00FF_FFFF) + VCIO_BASE
+}
+
+///
+///DMA uses VC CPU Bus addresses to access peripheral I/0.
+///
+#[inline]
+pub fn mmio_to_vc_loc(loc: u32) -> u32 {
+//Mask off lower 24 bits and add base.
+    (loc - MMIO_BASE) + VCIO_BASE
+}
 
 pub mod clk;
 pub mod debug;
@@ -52,8 +84,6 @@ pub mod mbox;
 pub mod pwm;
 pub mod timer;
 pub mod uart;
-
-
 
 #[cfg(test)]
 mod tests {

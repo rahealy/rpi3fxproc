@@ -37,25 +37,6 @@ pub const DMA0_BASE:   u32 = MMIO_BASE + DMA0_OFFSET;
 const INT_STATUS_BASE: u32 = DMA0_BASE + 0xFE0;
 const ENABLE_BASE:     u32 = DMA0_BASE + 0xFF0;
 
-///
-///DMA uses VC CPU Bus addresses to access memory.
-///
-#[inline]
-pub fn phy_mem_to_vc_loc(loc: u32) -> u32 {
-   (loc & 0x00FF_FFFF) + 0xC0000000 //Direct uncached.
-//    (loc & 0x00FF_FFFF) + 0x80000000 //L2 Cache only. 
-//    (loc & 0x00FF_FFFF) + 0x40000000 //L2 Cache coherent non allocating.
-}
-
-///
-///DMA uses VC CPU Bus addresses to access peripheral I/0.
-///
-#[inline]
-pub fn mmio_to_vc_loc(loc: u32) -> u32 {
-//Mask off lower 24 bits and set upper byte to 0x7E
-    (loc & 0x00FF_FFFF) + 0x7E000000
-}
-
 
 register_bitfields! {
     u32,
@@ -323,7 +304,7 @@ impl ControlBlock {
 #[repr(align(32))] //Blocks must be aligned to a 256 bit (32 byte) boundary.
 #[derive(Default, Copy, Clone)]
 pub struct ControlBlockInstance {
-    data: [u8; mem::size_of::<ControlBlock>()],
+    pub data: [u32; 8],
 }
 
 impl ops::Deref for ControlBlockInstance {

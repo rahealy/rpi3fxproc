@@ -31,13 +31,14 @@ use crate::timer::{Timer, Timer1};
 use crate::gpfsel::GPFSEL;
 use crate::clk::PCMCTL;
 use crate::irq::*;
+use crate::irq;
 
 ///
 ///PCM registers control the I2S peripheral. 0x7E203000.
 ///
 const PCM_OFFSET:   u32 = 0x0020_3000;
 pub const PCM_BASE: u32 = MMIO_BASE + PCM_OFFSET; 
-pub const PCM_FIFO: u32 = PCM_BASE + 0x4; //FIFO Buffer at offset 0x4.
+pub const PCM_FIFO: u32 = PCM_BASE + 0x4; //FIFO Buffer at offset 0x4.;
 
 /**********************************************************************
  * ERROR
@@ -683,8 +684,10 @@ impl I2S for PCM {
 
             Mode::Interrupt => {
                 debug::out("pcm.load(): Interrupt mode selected.\r\n");
-
-                let irq = IRQ::default();
+//Enable interrupt.
+                IRQ::default().ENABLE_2.modify (
+                    irq::ENABLE_2::PCM::SET
+                );
 
                 self.INTEN_A.modify (
                     INTEN_A::RXR::SET +
@@ -696,12 +699,14 @@ impl I2S for PCM {
                     CS_A::TXTHR::A   + //TXW set when TX FIFO is 1/4 full.
                     CS_A::RXSEX::SET   //Extend sign bit to fill whole width.
                 );
-                
-                irq.ENABLE_2.modify(ENABLE_2::PCM::SET);
             },
 
             Mode::DMA => {
                 debug::out("pcm.load(): DMA mode selected.\r\n");
+//Enable interrupt.
+                IRQ::default().ENABLE_2.modify( 
+                    irq::ENABLE_2::PCM::SET
+                );
 
 //Set DMA Parameters. CS_A::DMAEN must be set and DMA must be configured.
                 self.CS_A.modify (
